@@ -144,7 +144,28 @@ Possible C++ libraries to consider:
 
 ---
 
-## 7. Open Questions
+## 7. Code Coverage Goals
+
+Code coverage targets for unit and end-to-end testing:
+
+| Module | Target | Rationale |
+|--------|--------|-----------|
+| `model/` (Team, Game, Season) | 90%+ | Core data structures; high confidence required |
+| `standings/` (Standings, Tiebreaker) | 95%+ | Playoff seeding correctness is critical; must match historical results |
+| `sim/` (MonteCarlo) | 85%+ | Simulation logic; coverage of random cases and edge conditions |
+| `util/` (CsvParser) | 80%+ | Utility parsing; lower risk but should handle malformed input |
+| `output/` (AsciiPrinter, WebServer) | 70%+ | UI/output formatting; less critical to correctness |
+| **Overall** | **80%+** | Establish a floor across the entire codebase |
+
+**Testing strategy:**
+- Use a C++ coverage tool (e.g., `gcov`, `llvm-cov`) to measure line and branch coverage.
+- Unit tests drive coverage for individual modules.
+- End-to-end tests provide coverage for integration paths (e.g., CSV → standings → tiebreaker logic).
+- Focus first on critical path: standings computation and tiebreaker rule application.
+
+---
+
+## 8. Open Questions
 
 - Which web source will be the primary data feed? **Resolved: nflverse for historical/schedule data; ESPN unofficial API for live in-season updates.**
 - Should the web app be an embedded C++ HTTP server, or generate static HTML files? **Resolved: embedded C++ HTTP server (cpp-httplib).**
