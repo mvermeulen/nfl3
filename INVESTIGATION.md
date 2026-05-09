@@ -135,10 +135,12 @@ Possible C++ libraries to consider:
 | 1 | Data layer | `teams.csv` + `schedule.csv` populated; CSV parser implemented |
 | 2 | Standings | Compute records; basic ASCII standings output |
 | 3 | Tiebreakers | Full NFL tiebreaker rules; exact playoff seeding |
-| 4 | Simulation | Monte Carlo engine; probabilistic playoff output |
-| 5 | Web app | Embedded HTTP server serving HTML standings/simulation results |
-| 6 | Data ingestion | Automated fetch from web source to update `schedule.csv` |
-| 7 | Playoff simulation | Postseason bracket simulation and Super Bowl probability (future) |
+| 4 | Unit tests | Unit tests for CSV parser, standings computation, and tiebreaker rule chain |
+| 5 | Simulation | Monte Carlo engine; probabilistic playoff output |
+| 6 | Web app | Embedded HTTP server serving HTML standings/simulation results |
+| 7 | Data ingestion | Automated fetch from web source to update `schedule.csv` |
+| 8 | End-to-end tests | Replay past seasons from nflverse historical data and verify computed playoff seedings match actual seedings; validate simulation output distributions against known outcomes |
+| 9 | Playoff simulation | Postseason bracket simulation and Super Bowl probability (future) |
 
 ---
 
