@@ -57,6 +57,14 @@ Build a C++ application to track the state of NFL games throughout the season, e
 
 Teams will be stored with metadata in a separate `data/teams.csv` file (full name, abbreviation, conference, division). This file is static and maintained manually.
 
+### Historical Season Data
+
+Historical seasons (1999–present) from nflverse are cached locally in CSV format under `data/historical/`:
+
+| File | Schema | Purpose |
+|------|--------|---------|
+| `data/historical/1999.csv`, `data/historical/2000.csv`, ... | Same as `schedule.csv` (week, date, home_team, away_team, home_score, away_score, status) | Backfitting win probability model; validating computed playoff seedings |
+
 ---
 
 ## 4. Data Sources
@@ -84,10 +92,14 @@ https://github.com/nflverse/nfldata/raw/master/data/games.csv
 
 ### 4.2 Secondary: ESPN Unofficial API
 
-The [ESPN unofficial JSON API](https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard) is suitable for **in-season live score updates** to automate `schedule.csv` result ingestion during the season. Not suitable for deep historical data.
+The [ESPN unofficial JSON API](https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard) is suitable for **in-season live score updates** to automate `schedule.csv` result ingestion during the season.
 
 - No API key required; returns JSON.
 - Use [nlohmann/json](https://github.com/nlohmann/json) to parse in C++.
+
+### 4.3 Historical Data Caching
+
+Historical seasons are fetched once from nflverse and cached locally in `data/historical/` as CSV files matching the `schedule.csv` schema. This avoids repeated network calls and enables offline model fitting and validation. Population of this cache is a one-time bootstrap step (or periodic refresh task, e.g., annual).
 
 ---
 
@@ -140,17 +152,17 @@ The program is a command-line tool with a simple invocation pattern:
 
 **Commands:**
 - `status` — Compute and display current standings + playoff scenarios (default if no command given).
-- `simulate [N]` — Run N Monte Carlo simulations (default: 10,000) and display playoff probability distributions.
+- `simulate [N]` — Run N Monte Carlo simulations (default: 100,000) and display playoff probability distributions.
 - `load-schedule <PATH>` — Load schedule CSV from custom path (default: `data/schedule.csv`).
 - `web [PORT]` — Start HTTP server on given port (default: 8080); opens local browser to standings dashboard.
-- `backfit-model <YEAR>` — Load historical season from nflverse and fit win probability model; output fitted coefficients.
+- `backfit-model <YEAR>` — Load historical season from local cache (`data/historical/<YEAR>.csv`) and fit win probability model; output fitted coefficients.
 
 **Examples:**
 ```bash
 ./nfl3 status                      # Show current standings
-./nfl3 simulate 50000              # Run 50k simulations
+./nfl3 simulate 100000             # Run 100k simulations (default is 100k)
 ./nfl3 web 9000                    # Start web server on :9000
-./nfl3 backfit-model 2023          # Fit model on 2023 season data
+./nfl3 backfit-model 2023          # Fit model on 2023 season from local cache
 ```
 
 ### 6.2 ASCII Output Format
@@ -172,7 +184,7 @@ The program is a command-line tool with a simple invocation pattern:
 **Playoff probability table** (post-simulation):
 ```
 ┌────────────────────────────────────────────┐
-│ Playoff Probability (10k simulations)      │
+│ Playoff Probability (100k simulations)     |
 ├──────────┬────────┬────────┬────────┐
 │ Team     │ Make % │ Seed # │ Super % │
 ├──────────┼────────┼────────┼────────┤
@@ -189,7 +201,7 @@ The program is a command-line tool with a simple invocation pattern:
 - `GET /` — Redirect to `/standings`
 - `GET /standings` — HTML dashboard showing current standings, division ranks, tiebreaker state
 - `GET /api/standings` — JSON response (teams, records, playoff seeds, tiebreaker details)
-- `GET /api/simulation?iterations=10000` — JSON response (playoff probability data)
+- `GET /api/simulation?iterations=100000` — JSON response (playoff probability data; default: 100,000)
 - `POST /api/update-result` — Accept manual game result entry (home_team, away_team, home_score, away_score); update internal state; recalculate standings
 - `GET /simulation` — HTML dashboard showing probability tables and charts (if simple charting lib used)
 
@@ -206,7 +218,7 @@ The program is a command-line tool with a simple invocation pattern:
 <body>
   <h1>Current Standings</h1>
   <div id="standings"></div>
-  <button onclick="runSimulation()">Simulate 10k Seasons</button>
+  <button onclick="runSimulation()">Simulate 100k Seasons</button>
   <div id="simulation"></div>
   <script>
     // Fetch standings from /api/standings; populate div
@@ -219,7 +231,7 @@ The program is a command-line tool with a simple invocation pattern:
 ### 6.4 User Workflows
 
 **During off-season:**
-1. Load previous season's historical data via `./nfl3 backfit-model 2024`.
+1. Load previous season's historical data via `./nfl3 backfit-model 2024` (reads from `data/historical/2024.csv`).
 2. Fit win probability model; save coefficients to config.
 3. Load new season schedule from nflverse into `data/schedule.csv`.
 4. Review standings (`./nfl3 status`).
@@ -227,7 +239,7 @@ The program is a command-line tool with a simple invocation pattern:
 **During regular season:**
 1. Update `data/schedule.csv` manually (or via future automated ingestion) as games are played.
 2. Run `./nfl3 status` to see current standings and tiebreakers.
-3. Run `./nfl3 simulate 50000` to estimate playoff odds for remaining weeks.
+3. Run `./nfl3 simulate` to run 100k simulations and estimate playoff odds for remaining weeks.
 4. Use `./nfl3 web 8080` to launch interactive dashboard for continuous monitoring.
 5. Use `/api/update-result` endpoint (via web form) to log new game results real-time.
 
