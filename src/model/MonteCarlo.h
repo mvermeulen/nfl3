@@ -34,6 +34,28 @@ struct SimulationResults {
 };
 
 /**
+ * Represents playoff probability impact for a single game.
+ */
+struct GameImpact {
+    int week;
+    std::string date;
+    std::string homeTeam;
+    std::string awayTeam;
+    double homeDeltaPlayoffProb;
+    double awayDeltaPlayoffProb;
+    double homePlayoffProbIfHomeWins;
+    double awayPlayoffProbIfAwayWins;
+};
+
+/**
+ * Represents impact analysis for the next unplayed week.
+ */
+struct ImpactAnalysisResults {
+    int week;
+    std::vector<GameImpact> gameImpacts;
+};
+
+/**
  * MonteCarlo implements a probabilistic playoff simulator.
  * Simulates remaining games using win probability models based on team strength
  * and home field advantage.
@@ -57,6 +79,19 @@ public:
     SimulationResults simulate(const Season& season, 
                               int iterations = 100000,
                               unsigned int seed = 0);
+
+    /**
+     * Analyze how each game in the next unplayed week changes playoff odds.
+     * For each game, runs two forced scenarios: home win and away win.
+     *
+     * @param season The current season state
+     * @param iterations Number of simulation runs per scenario
+     * @param seed Random seed for reproducibility
+     * @return ImpactAnalysisResults for next unplayed week
+     */
+    ImpactAnalysisResults analyzeImpact(const Season& season,
+                                        int iterations = 100000,
+                                        unsigned int seed = 12345);
 
     /**
      * Get win probability for a specific game based on team strength.
@@ -106,6 +141,18 @@ private:
      * @return PlayoffOutcome with seeding information
      */
     PlayoffOutcome determinePlayoffs(const Season& season);
+
+    /**
+     * Return next unplayed week number, or -1 if all games are final.
+     */
+    int nextUnplayedWeek(const Season& season) const;
+
+    /**
+     * Build a season copy with one scheduled game forced to a final outcome.
+     */
+    Season forceGameOutcome(const Season& season,
+                            const Game& targetGame,
+                            bool homeWins) const;
 };
 
 #endif // MONTECARLO_H

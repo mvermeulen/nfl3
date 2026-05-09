@@ -2,6 +2,53 @@
 #include <cmath>
 #include <algorithm>
 
+ImpactAnalysisResults MonteCarlo::analyzeImpact(const Season& season,
+                                                int iterations,
+                                                unsigned int seed) {
+    ImpactAnalysisResults results;
+    results.week = nextUnplayedWeek(season);
+    if (results.week < 0) {
+        return results;
+    }
+
+    const auto baseline = simulate(season, iterations, seed);
+
+    for (const auto& game : season.allGames()) {
+        if (game.week() != results.week || game.isPlayed()) {
+            continue;
+        }
+
+        Season homeWinSeason = forceGameOutcome(season, game, true);
+        Season awayWinSeason = forceGameOutcome(season, game, false);
+
+        const auto homeWinResults = simulate(homeWinSeason, iterations, seed);
+        const auto awayWinResults = simulate(awayWinSeason, iterations, seed);
+
+        GameImpact impact{};
+        impact.week = game.week();
+        impact.date = game.date();
+        impact.homeTeam = game.homeTeam();
+        impact.awayTeam = game.awayTeam();
+        impact.homePlayoffProbIfHomeWins = homeWinResults.playoffProbability.at(game.homeTeam());
+        impact.awayPlayoffProbIfAwayWins = awayWinResults.playoffProbability.at(game.awayTeam());
+        impact.homeDeltaPlayoffProb =
+            impact.homePlayoffProbIfHomeWins - baseline.playoffProbability.at(game.homeTeam());
+        impact.awayDeltaPlayoffProb =
+            impact.awayPlayoffProbIfAwayWins - baseline.playoffProbability.at(game.awayTeam());
+
+        results.gameImpacts.push_back(impact);
+    }
+
+    std::sort(results.gameImpacts.begin(), results.gameImpacts.end(),
+              [](const GameImpact& a, const GameImpact& b) {
+                  const double magA = std::abs(a.homeDeltaPlayoffProb) + std::abs(a.awayDeltaPlayoffProb);
+                  const double magB = std::abs(b.homeDeltaPlayoffProb) + std::abs(b.awayDeltaPlayoffProb);
+                  return magA > magB;
+              });
+
+    return results;
+}
+
 SimulationResults MonteCarlo::simulate(const Season& season, 
                                        int iterations,
                                        unsigned int seed) {
@@ -229,4 +276,43 @@ double MonteCarlo::getTeamStrengthFactor(const Team& team) const {
     }
     
     return strengthFactor;
+}
+
+int MonteCarlo::nextUnplayedWeek(const Season& season) const {
+    int nextWeek = -1;
+    for (const auto& game : season.allGames()) {
+        if (!game.isPlayed() && (nextWeek < 0 || game.week() < nextWeek)) {
+            nextWeek = game.week();
+        }
+    }
+    return nextWeek;
+}
+
+Season MonteCarlo::forceGameOutcome(const Season& season,
+                                    const Game& targetGame,
+                                    bool homeWins) const {
+    Season forcedSeason = season;
+    std::vector<Game> updatedGames;
+    updatedGames.reserve(season.allGames().size());
+
+    bool replaced = false;
+    for (const auto& game : season.allGames()) {
+        if (!replaced &&
+            game.week() == targetGame.week() &&
+            game.date() == targetGame.date() &&
+            game.homeTeam() == targetGame.homeTeam() &&
+            game.awayTeam() == targetGame.awayTeam() &&
+            !game.isPlayed()) {
+            const int homeScore = homeWins ? 24 : 17;
+            const int awayScore = homeWins ? 17 : 24;
+            updatedGames.emplace_back(game.week(), game.date(), game.homeTeam(), game.awayTeam(),
+                                      homeScore, awayScore, "final");
+            replaced = true;
+        } else {
+            updatedGames.push_back(game);
+        }
+    }
+
+    forcedSeason.replaceGames(updatedGames);
+    return forcedSeason;
 }

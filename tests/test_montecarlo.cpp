@@ -205,3 +205,40 @@ TEST_CASE("MonteCarlo deterministic with seed", "[MonteCarlo]") {
         REQUIRE(results2.playoffProbability[abbr] == prob);
     }
 }
+
+TEST_CASE("MonteCarlo impact analysis", "[MonteCarlo]") {
+    MonteCarlo mc;
+    Season season;
+
+    season.addTeam(Team("KC", "Kansas City Chiefs", "AFC", "AFC West"));
+    season.addTeam(Team("DEN", "Denver Broncos", "AFC", "AFC West"));
+    season.addTeam(Team("LAC", "LA Chargers", "AFC", "AFC West"));
+    season.addTeam(Team("LV", "Las Vegas Raiders", "AFC", "AFC West"));
+
+    // Prior completed game (week 1) and two upcoming week-2 games.
+    season.addGame(Game(1, "2026-09-10", "KC", "DEN", 24, 17, "final"));
+    season.addGame(Game(2, "2026-09-17", "LAC", "KC", -1, -1, "scheduled"));
+    season.addGame(Game(2, "2026-09-17", "LV", "DEN", -1, -1, "scheduled"));
+
+    season.computeStandings();
+
+    auto impact = mc.analyzeImpact(season, 300, 4242);
+
+    SECTION("Impact targets next unplayed week") {
+        REQUIRE(impact.week == 2);
+        REQUIRE(impact.gameImpacts.size() == 2);
+    }
+
+    SECTION("Impact values are bounded") {
+        for (const auto& gameImpact : impact.gameImpacts) {
+            REQUIRE(gameImpact.homeDeltaPlayoffProb >= -1.0);
+            REQUIRE(gameImpact.homeDeltaPlayoffProb <= 1.0);
+            REQUIRE(gameImpact.awayDeltaPlayoffProb >= -1.0);
+            REQUIRE(gameImpact.awayDeltaPlayoffProb <= 1.0);
+            REQUIRE(gameImpact.homePlayoffProbIfHomeWins >= 0.0);
+            REQUIRE(gameImpact.homePlayoffProbIfHomeWins <= 1.0);
+            REQUIRE(gameImpact.awayPlayoffProbIfAwayWins >= 0.0);
+            REQUIRE(gameImpact.awayPlayoffProbIfAwayWins <= 1.0);
+        }
+    }
+}
