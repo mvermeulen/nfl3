@@ -144,7 +144,7 @@ Possible C++ libraries to consider:
 ## 7. Open Questions
 
 - Which web source will be the primary data feed? **Resolved: nflverse for historical/schedule data; ESPN unofficial API for live in-season updates.**
-- Should the web app be an embedded C++ HTTP server, or generate static HTML files?
+- Should the web app be an embedded C++ HTTP server, or generate static HTML files? **Resolved: embedded C++ HTTP server (cpp-httplib).**
 - Win probability model for simulation: ~~pure 50/50~~ fit a basic probabilistic model to historical data (home field advantage, prior-season team strength); not full Elo.
 - Should playoff simulation include postseason bracket simulation, or only regular-season outcome probabilities?
 - License / open-source intent?
