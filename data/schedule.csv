@@ -1,5 +1,9 @@
 week,date,home_team,away_team,home_score,away_score,status
-1,2026-09-10,KC,BAL,24,20,final
-1,2026-09-10,DAL,NYG,28,23,final
+1,2026-09-10,KC,LAC,24,20,final
+1,2026-09-10,DEN,LV,21,20,final
+1,2026-09-10,DAL,PHI,28,23,final
 1,2026-09-10,SF,SEA,21,13,final
-1,2026-09-10,PHI,NO,31,7,final
+2,2026-09-17,LAC,KC,17,20,final
+2,2026-09-17,LV,DEN,24,21,final
+2,2026-09-17,PHI,DAL,27,28,final
+2,2026-09-17,SEA,SF,13,21,final

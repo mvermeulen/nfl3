@@ -16,9 +16,12 @@ public:
 
     // Accessors
     const std::string& abbreviation() const { return abbreviation_; }
+    const std::string& getAbbreviation() const { return abbreviation_; }
     const std::string& fullName() const { return fullName_; }
     const std::string& conference() const { return conference_; }
+    const std::string& getConference() const { return conference_; }
     const std::string& division() const { return division_; }
+    const std::string& getDivision() const { return division_; }
 
     // Record accessors
     int wins() const { return wins_; }
@@ -36,10 +39,33 @@ public:
     void addWin() { wins_++; }
     void addLoss() { losses_++; }
     void addTie() { ties_++; }
+    
+    // Division record (wins/losses/ties within division)
+    int divisionWins() const { return divisionWins_; }
+    int divisionLosses() const { return divisionLosses_; }
+    int divisionTies() const { return divisionTies_; }
+    void addDivisionWin() { divisionWins_++; }
+    void addDivisionLoss() { divisionLosses_++; }
+    void addDivisionTie() { divisionTies_++; }
+    
+    // Conference record (wins/losses/ties within conference)
+    int conferenceWins() const { return conferenceWins_; }
+    int conferenceLosses() const { return conferenceLosses_; }
+    int conferenceTies() const { return conferenceTies_; }
+    void addConferenceWin() { conferenceWins_++; }
+    void addConferenceLoss() { conferenceLosses_++; }
+    void addConferenceTie() { conferenceTies_++; }
+    
     void resetRecord() {
         wins_ = 0;
         losses_ = 0;
         ties_ = 0;
+        divisionWins_ = 0;
+        divisionLosses_ = 0;
+        divisionTies_ = 0;
+        conferenceWins_ = 0;
+        conferenceLosses_ = 0;
+        conferenceTies_ = 0;
     }
 
 private:
@@ -47,9 +73,15 @@ private:
     std::string fullName_;
     std::string conference_;
     std::string division_;
-    int wins_;
-    int losses_;
-    int ties_;
+    int wins_ = 0;
+    int losses_ = 0;
+    int ties_ = 0;
+    int divisionWins_ = 0;
+    int divisionLosses_ = 0;
+    int divisionTies_ = 0;
+    int conferenceWins_ = 0;
+    int conferenceLosses_ = 0;
+    int conferenceTies_ = 0;
 };
 
 #endif // TEAM_H

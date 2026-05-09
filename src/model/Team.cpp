@@ -4,7 +4,9 @@ Team::Team(const std::string& abbreviation, const std::string& fullName,
            const std::string& conference, const std::string& division)
     : abbreviation_(abbreviation), fullName_(fullName),
       conference_(conference), division_(division),
-      wins_(0), losses_(0), ties_(0) {}
+      wins_(0), losses_(0), ties_(0),
+      divisionWins_(0), divisionLosses_(0), divisionTies_(0),
+      conferenceWins_(0), conferenceLosses_(0), conferenceTies_(0) {}
 
 double Team::winPercentage() const {
     int total = gamesPlayed();

@@ -15,5 +15,6 @@ add_executable(nfl3
     src/model/Team.cpp
     src/model/Game.cpp
     src/model/Season.cpp
+    src/model/Tiebreaker.cpp
     src/output/AsciiPrinter.cpp
 )
