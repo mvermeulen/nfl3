@@ -163,6 +163,37 @@ Code coverage targets for unit and end-to-end testing:
 - End-to-end tests provide coverage for integration paths (e.g., CSV → standings → tiebreaker logic).
 - Focus first on critical path: standings computation and tiebreaker rule application.
 
+### 7.1 Performance Measurements
+
+While no explicit performance targets are set, instrumentation is needed to track and understand system behavior as it matures:
+
+| Operation | Metric | Purpose |
+|-----------|--------|---------|
+| CSV parse (schedule.csv, teams.csv) | Time (ms) | Establish baseline for data ingestion |
+| Standings computation (all 32 teams, full tiebreaker chain) | Time (ms) | Monitor tiebreaker algorithm efficiency |
+| Monte Carlo simulation (N iterations, e.g. 100k) | Time (s); iterations/sec | Track simulation throughput |
+| Web server startup | Time (ms) | Responsiveness of CLI → server launch |
+| HTTP request handling (standings, simulation results) | Latency (ms); throughput (requests/sec) | User-facing responsiveness |
+
+**Implementation:**
+- Emit timing logs at key checkpoints (e.g., `LOG_INFO("Tiebreaker computation completed in 45 ms")`) during development.
+- Build a simple benchmark harness to measure end-to-end latency under realistic workloads.
+- Store baseline measurements in a log or configuration for comparison across versions.
+- **No hard SLA targets needed initially**, but if simulations become the bottleneck, this data informs optimization priorities.
+
+### 7.2 Concurrency Model (TBD)
+
+Needs decision: should the application be **single-threaded** or **multi-threaded**?
+
+**Single-threaded:** Simpler to reason about, easier to debug; adequate if Monte Carlo simulations complete in reasonable time (&lt;1–2 minutes for 100k iterations).
+
+**Multi-threaded:** Necessary if:
+- User expects &lt;100 ms response time while simulation runs in background.
+- Web server should accept requests while simulation is in progress.
+- Simulation needs to be parallelized (e.g., chunk 100k iterations across N worker threads).
+
+**Recommendation:** Start single-threaded. Benchmark the full Monte Carlo workflow on target hardware. If wall-clock time exceeds acceptable limits, introduce threading—most naturally in the simulation engine (embarrassingly parallel: each iteration can run independently).
+
 ---
 
 ## 8. Open Questions
