@@ -1,6 +1,6 @@
 #include <iostream>
 
 int main() {
-    std::cout << "Hello from nfl2 C++ project!" << std::endl;
+    std::cout << "Hello from nfl3 NFL Game State Tracker!" << std::endl;
     return 0;
 }
