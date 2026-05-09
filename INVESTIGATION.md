@@ -55,7 +55,7 @@ Build a C++ application to track the state of NFL games throughout the season, e
 | home_score  | int    | -1 = not yet played                      |
 | status      | string | `scheduled` / `final` / `in_progress`   |
 
-Teams will be stored with metadata (full name, abbreviation, conference, division) either inline or in a separate `data/teams.csv`.
+Teams will be stored with metadata in a separate `data/teams.csv` file (full name, abbreviation, conference, division). This file is static and maintained manually.
 
 ---
 
