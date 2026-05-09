@@ -148,4 +148,4 @@ Possible C++ libraries to consider:
 - Should the web app be an embedded C++ HTTP server, or generate static HTML files? **Resolved: embedded C++ HTTP server (cpp-httplib).**
 - Win probability model for simulation: ~~pure 50/50~~ fit a basic probabilistic model to historical data (home field advantage, prior-season team strength); not full Elo.
 - Should playoff simulation include postseason bracket simulation, or only regular-season outcome probabilities? **Deferred: postseason bracket simulation is a future item; not in scope for initial design.**
-- License / open-source intent?
+- License / open-source intent? **Resolved: MIT License.**
