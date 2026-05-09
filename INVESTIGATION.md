@@ -128,7 +128,116 @@ Possible C++ libraries to consider:
 
 ---
 
-## 6. Milestones
+## 6. User Interface Design
+
+### 6.1 CLI Invocation Model
+
+The program is a command-line tool with a simple invocation pattern:
+
+```bash
+./nfl3 [COMMAND] [OPTIONS]
+```
+
+**Commands:**
+- `status` — Compute and display current standings + playoff scenarios (default if no command given).
+- `simulate [N]` — Run N Monte Carlo simulations (default: 10,000) and display playoff probability distributions.
+- `load-schedule <PATH>` — Load schedule CSV from custom path (default: `data/schedule.csv`).
+- `web [PORT]` — Start HTTP server on given port (default: 8080); opens local browser to standings dashboard.
+- `backfit-model <YEAR>` — Load historical season from nflverse and fit win probability model; output fitted coefficients.
+
+**Examples:**
+```bash
+./nfl3 status                      # Show current standings
+./nfl3 simulate 50000              # Run 50k simulations
+./nfl3 web 9000                    # Start web server on :9000
+./nfl3 backfit-model 2023          # Fit model on 2023 season data
+```
+
+### 6.2 ASCII Output Format
+
+**Standings table** (terminal-friendly):
+```
+┌─────────────────────────────────────────────────────────────┐
+│ AFC EAST                                                    │
+├──────────┬──────┬──────┬──────┬──────────┬──────────┐
+│ Team     │ Wins │ Loss │ Ties │ Div Win% │ Playoffs │
+├──────────┼──────┼──────┼──────┼──────────┼──────────┤
+│ Miami    │   11 │    6 │    0 │   100%   │ #1 Seed  │
+│ Buffalo  │    9 │    8 │    0 │    67%   │ #5 Seed  │
+│ NYJ      │    5 │   12 │    0 │    33%   │   Out    │
+│ NEP      │    4 │   13 │    0 │    0%    │   Out    │
+└──────────┴──────┴──────┴──────┴──────────┴──────────┘
+```
+
+**Playoff probability table** (post-simulation):
+```
+┌────────────────────────────────────────────┐
+│ Playoff Probability (10k simulations)      │
+├──────────┬────────┬────────┬────────┐
+│ Team     │ Make % │ Seed # │ Super % │
+├──────────┼────────┼────────┼────────┤
+│ Miami    │  98.5% │ #1-#5  │  34.2% │
+│ Buffalo  │  62.3% │ #5-#6  │  8.7%  │
+│ NYJ      │  18.1% │ WC     │  0.3%  │
+│ NEP      │   0.8% │ WC     │  0.0%  │
+└──────────┴────────┴────────┴────────┘
+```
+
+### 6.3 Web App Architecture
+
+**Endpoints:**
+- `GET /` — Redirect to `/standings`
+- `GET /standings` — HTML dashboard showing current standings, division ranks, tiebreaker state
+- `GET /api/standings` — JSON response (teams, records, playoff seeds, tiebreaker details)
+- `GET /api/simulation?iterations=10000` — JSON response (playoff probability data)
+- `POST /api/update-result` — Accept manual game result entry (home_team, away_team, home_score, away_score); update internal state; recalculate standings
+- `GET /simulation` — HTML dashboard showing probability tables and charts (if simple charting lib used)
+
+**Technologies:**
+- Backend: cpp-httplib (single-threaded request dispatch)
+- Frontend: Simple HTML/CSS + inline JavaScript (no build step)
+- Data format: JSON for API responses; CSV for persistent storage
+
+**Sample HTML page:**
+```html
+<!DOCTYPE html>
+<html>
+<head><title>NFL3 Standings</title></head>
+<body>
+  <h1>Current Standings</h1>
+  <div id="standings"></div>
+  <button onclick="runSimulation()">Simulate 10k Seasons</button>
+  <div id="simulation"></div>
+  <script>
+    // Fetch standings from /api/standings; populate div
+    // Fetch simulation results from /api/simulation; populate div
+  </script>
+</body>
+</html>
+```
+
+### 6.4 User Workflows
+
+**During off-season:**
+1. Load previous season's historical data via `./nfl3 backfit-model 2024`.
+2. Fit win probability model; save coefficients to config.
+3. Load new season schedule from nflverse into `data/schedule.csv`.
+4. Review standings (`./nfl3 status`).
+
+**During regular season:**
+1. Update `data/schedule.csv` manually (or via future automated ingestion) as games are played.
+2. Run `./nfl3 status` to see current standings and tiebreakers.
+3. Run `./nfl3 simulate 50000` to estimate playoff odds for remaining weeks.
+4. Use `./nfl3 web 8080` to launch interactive dashboard for continuous monitoring.
+5. Use `/api/update-result` endpoint (via web form) to log new game results real-time.
+
+**What-if scenarios (future enhancement):**
+- Edit `data/schedule.csv` hypothetically (change a team's remaining opponents or scores).
+- Re-run simulation to see impact on playoff probability.
+
+---
+
+## 7. Milestones
 
 | # | Milestone | Description |
 |---|-----------|-------------|
@@ -144,7 +253,7 @@ Possible C++ libraries to consider:
 
 ---
 
-## 7. Code Coverage Goals
+## 8. Code Coverage Goals
 
 Code coverage targets for unit and end-to-end testing:
 
@@ -163,7 +272,7 @@ Code coverage targets for unit and end-to-end testing:
 - End-to-end tests provide coverage for integration paths (e.g., CSV → standings → tiebreaker logic).
 - Focus first on critical path: standings computation and tiebreaker rule application.
 
-### 7.1 Performance Measurements
+### 8.1 Performance Measurements
 
 While no explicit performance targets are set, instrumentation is needed to track and understand system behavior as it matures:
 
@@ -181,13 +290,13 @@ While no explicit performance targets are set, instrumentation is needed to trac
 - Store baseline measurements in a log or configuration for comparison across versions.
 - **No hard SLA targets needed initially**, but if simulations become the bottleneck, this data informs optimization priorities.
 
-### 7.2 Concurrency Model
+### 8.2 Concurrency Model
 
 **Resolved: Start single-threaded.** Concurrency is a concern primarily for the Monte Carlo simulation. If 100k iterations take longer than acceptable (e.g., >2 minutes), introduce multi-threading at that point. The simulation engine's embarrassingly parallel nature (each iteration independent) makes it an ideal candidate for thread pooling.
 
 ---
 
-## 8. Open Questions
+## 9. Open Questions
 
 - Which web source will be the primary data feed? **Resolved: nflverse for historical/schedule data; ESPN unofficial API for live in-season updates.**
 - Should the web app be an embedded C++ HTTP server, or generate static HTML files? **Resolved: embedded C++ HTTP server (cpp-httplib).**
