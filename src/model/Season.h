@@ -24,6 +24,7 @@ public:
     // Game management
     void addGame(const Game& game);
     const std::vector<Game>& allGames() const { return games_; }
+    void replaceGames(const std::vector<Game>& games) { games_ = games; }
 
     // Standings computation
     void computeStandings();

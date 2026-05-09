@@ -17,6 +17,7 @@ add_executable(nfl3
     src/model/Game.cpp
     src/model/Season.cpp
     src/model/Tiebreaker.cpp
+    src/model/MonteCarlo.cpp
     src/output/AsciiPrinter.cpp
 )
 
@@ -29,11 +30,13 @@ add_executable(nfl3_tests
     tests/test_game.cpp
     tests/test_tiebreaker.cpp
     tests/test_season.cpp
+    tests/test_montecarlo.cpp
     src/util/CsvParser.cpp
     src/model/Team.cpp
     src/model/Game.cpp
     src/model/Season.cpp
     src/model/Tiebreaker.cpp
+    src/model/MonteCarlo.cpp
     src/output/AsciiPrinter.cpp
 )
 
