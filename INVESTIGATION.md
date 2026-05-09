@@ -181,18 +181,9 @@ While no explicit performance targets are set, instrumentation is needed to trac
 - Store baseline measurements in a log or configuration for comparison across versions.
 - **No hard SLA targets needed initially**, but if simulations become the bottleneck, this data informs optimization priorities.
 
-### 7.2 Concurrency Model (TBD)
+### 7.2 Concurrency Model
 
-Needs decision: should the application be **single-threaded** or **multi-threaded**?
-
-**Single-threaded:** Simpler to reason about, easier to debug; adequate if Monte Carlo simulations complete in reasonable time (&lt;1–2 minutes for 100k iterations).
-
-**Multi-threaded:** Necessary if:
-- User expects &lt;100 ms response time while simulation runs in background.
-- Web server should accept requests while simulation is in progress.
-- Simulation needs to be parallelized (e.g., chunk 100k iterations across N worker threads).
-
-**Recommendation:** Start single-threaded. Benchmark the full Monte Carlo workflow on target hardware. If wall-clock time exceeds acceptable limits, introduce threading—most naturally in the simulation engine (embarrassingly parallel: each iteration can run independently).
+**Resolved: Start single-threaded.** Concurrency is a concern primarily for the Monte Carlo simulation. If 100k iterations take longer than acceptable (e.g., >2 minutes), introduce multi-threading at that point. The simulation engine's embarrassingly parallel nature (each iteration independent) makes it an ideal candidate for thread pooling.
 
 ---
 
