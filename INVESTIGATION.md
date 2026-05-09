@@ -26,7 +26,11 @@ Build a C++ application to track the state of NFL games throughout the season, e
 
 ### 2.3 Monte Carlo Simulation
 - For games not yet played, simulate outcomes probabilistically.
-- Default model: each team has an equal 50/50 win probability (upgradeable later to Elo- or rating-based models).
+- **Win probability model:** Not a simple 50/50 split, and not a full Elo system. Instead, fit a basic probabilistic model to historical data. Factors to consider:
+  - **Home field advantage:** fit the historical home team win rate from past seasons (typically ~57%) as a baseline adjustment.
+  - **Team strength from prior season:** use the previous year's win percentage (or point differential) as a proxy for team quality, decayed appropriately for roster changes.
+  - The model should be parameterizable — weights are derived by fitting to past schedules/results, not hard-coded assumptions.
+- The goal is a lightweight, explainable model that outperforms 50/50 without the complexity of full Elo maintenance.
 - Run a large number of simulations (e.g., 10 000–100 000 iterations).
 - For each simulation, record which teams make the playoffs and in which seed.
 - Tally results across all simulations to produce probability estimates (e.g., "Team X has a 73% chance of making the playoffs as the #2 seed").
@@ -124,6 +128,6 @@ Possible C++ libraries to consider:
 
 - Which web source will be the primary data feed? (ESPN unofficial API recommended as first pass.)
 - Should the web app be an embedded C++ HTTP server, or generate static HTML files?
-- Win probability model for simulation: pure 50/50, Elo ratings, or Vegas spreads?
+- Win probability model for simulation: ~~pure 50/50~~ fit a basic probabilistic model to historical data (home field advantage, prior-season team strength); not full Elo.
 - Should playoff simulation include postseason bracket simulation, or only regular-season outcome probabilities?
 - License / open-source intent?
