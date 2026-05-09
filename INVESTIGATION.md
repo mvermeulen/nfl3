@@ -35,7 +35,23 @@ Build a C++ application to track the state of NFL games throughout the season, e
 - For each simulation, record which teams make the playoffs and in which seed.
 - Tally results across all simulations to produce probability estimates (e.g., "Team X has a 73% chance of making the playoffs as the #2 seed").
 
-### 2.4 Output
+### 2.4 Impact Analysis
+
+For each game scheduled in the coming week, compute the marginal impact of that single game on the playoff probabilities of the teams involved. This enables users to understand which games are "must-win" (high variance in outcome) vs. "decided" (low variance).
+
+**Methodology:**
+1. Run a baseline 100k-iteration simulation with the current schedule.
+2. For each unplayed game in the next week:
+   - Create two hypothetical scenarios: home team wins, away team wins.
+   - Re-run 100k-iteration simulation for each scenario.
+   - Record playoff probability delta for both teams.
+3. Display results sorted by impact magnitude.
+
+**Output:** Table showing each next-week game with:
+- Home team | Away team | Impact on Home team's playoff prob (%) | Impact on Away team's playoff prob (%)
+- Example: "KC vs. Buffalo: KC +15% / Buffalo -18%" indicates this game is crucial for both teams' playoff odds.
+
+### 2.5 Output
 - **ASCII output:** formatted standings table and playoff probability table printable to the terminal.
 - **Web app:** a local web server (or generated static HTML) to display the same information in a browser.
 
@@ -153,6 +169,7 @@ The program is a command-line tool with a simple invocation pattern:
 **Commands:**
 - `status` — Compute and display current standings + playoff scenarios (default if no command given).
 - `simulate [N]` — Run N Monte Carlo simulations (default: 100,000) and display playoff probability distributions.
+- `impact` — Analyze the impact of each game in the coming week on playoff probabilities for all teams involved.
 - `load-schedule <PATH>` — Load schedule CSV from custom path (default: `data/schedule.csv`).
 - `web [PORT]` — Start HTTP server on given port (default: 8080); opens local browser to standings dashboard.
 - `backfit-model <YEAR>` — Load historical season from local cache (`data/historical/<YEAR>.csv`) and fit win probability model; output fitted coefficients.
@@ -161,6 +178,7 @@ The program is a command-line tool with a simple invocation pattern:
 ```bash
 ./nfl3 status                      # Show current standings
 ./nfl3 simulate 100000             # Run 100k simulations (default is 100k)
+./nfl3 impact                      # Show impact of next week's games on playoff odds
 ./nfl3 web 9000                    # Start web server on :9000
 ./nfl3 backfit-model 2023          # Fit model on 2023 season from local cache
 ```
@@ -195,6 +213,19 @@ The program is a command-line tool with a simple invocation pattern:
 └──────────┴────────┴────────┴────────┘
 ```
 
+**Game impact table** (next week's games):
+```
+┌────────────────────────────────────────────────────────┐
+│ Impact Analysis — Week 14 Games                        │
+├─────────────────┬─────────────────┬──────────┬────────┤
+│ Away Team       │ Home Team        │ Impact % │ Importance │
+├─────────────────┼─────────────────┼──────────┼────────┤
+│ KC (Δ +12%)     │ Miami (Δ -14%)   │  13%    │ Critical   │
+│ Buffalo (Δ +8%) │ NYJ (Δ -9%)      │  8.5%   │ High       │
+│ NE (Δ +0.5%)    │ Baltimore (no Δ) │  0.2%   │ Minimal    │
+└─────────────────┴─────────────────┴──────────┴────────┘
+```
+
 ### 6.3 Web App Architecture
 
 **Endpoints:**
@@ -202,7 +233,9 @@ The program is a command-line tool with a simple invocation pattern:
 - `GET /standings` — HTML dashboard showing current standings, division ranks, tiebreaker state
 - `GET /api/standings` — JSON response (teams, records, playoff seeds, tiebreaker details)
 - `GET /api/simulation?iterations=100000` — JSON response (playoff probability data; default: 100,000)
+- `GET /api/impact` — JSON response (impact of each next-week game on team playoff probabilities)
 - `POST /api/update-result` — Accept manual game result entry (home_team, away_team, home_score, away_score); update internal state; recalculate standings
+- `GET /impact` — HTML dashboard showing impact analysis for next week's games
 - `GET /simulation` — HTML dashboard showing probability tables and charts (if simple charting lib used)
 
 **Technologies:**
@@ -240,8 +273,9 @@ The program is a command-line tool with a simple invocation pattern:
 1. Update `data/schedule.csv` manually (or via future automated ingestion) as games are played.
 2. Run `./nfl3 status` to see current standings and tiebreakers.
 3. Run `./nfl3 simulate` to run 100k simulations and estimate playoff odds for remaining weeks.
-4. Use `./nfl3 web 8080` to launch interactive dashboard for continuous monitoring.
-5. Use `/api/update-result` endpoint (via web form) to log new game results real-time.
+4. Run `./nfl3 impact` to understand which games next week have the most impact on playoff scenarios.
+5. Use `./nfl3 web 8080` to launch interactive dashboard for continuous monitoring (includes impact analysis page).
+6. Use `/api/update-result` endpoint (via web form) to log new game results real-time.
 
 **What-if scenarios (future enhancement):**
 - Edit `data/schedule.csv` hypothetically (change a team's remaining opponents or scores).
@@ -259,9 +293,10 @@ The program is a command-line tool with a simple invocation pattern:
 | 4 | Unit tests | Unit tests for CSV parser, standings computation, and tiebreaker rule chain |
 | 5 | Simulation | Monte Carlo engine; probabilistic playoff output |
 | 6 | Web app | Embedded HTTP server serving HTML standings/simulation results |
-| 7 | Data ingestion | Automated fetch from web source to update `schedule.csv` |
-| 8 | End-to-end tests | Replay past seasons from nflverse historical data and verify computed playoff seedings match actual seedings; validate simulation output distributions against known outcomes |
-| 9 | Playoff simulation | Postseason bracket simulation and Super Bowl probability (future) |
+| 7 | Impact analysis | For each game in the coming week, measure how much that single game affects playoff probabilities for the teams involved; display in ASCII and web UI |
+| 8 | Data ingestion | Automated fetch from web source to update `schedule.csv` |
+| 9 | End-to-end tests | Replay past seasons from nflverse historical data and verify computed playoff seedings match actual seedings; validate simulation output distributions against known outcomes |
+| 10 | Playoff simulation | Postseason bracket simulation and Super Bowl probability (future) |
 
 ---
 
