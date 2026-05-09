@@ -138,6 +138,7 @@ Possible C++ libraries to consider:
 | 4 | Simulation | Monte Carlo engine; probabilistic playoff output |
 | 5 | Web app | Embedded HTTP server serving HTML standings/simulation results |
 | 6 | Data ingestion | Automated fetch from web source to update `schedule.csv` |
+| 7 | Playoff simulation | Postseason bracket simulation and Super Bowl probability (future) |
 
 ---
 
@@ -146,5 +147,5 @@ Possible C++ libraries to consider:
 - Which web source will be the primary data feed? **Resolved: nflverse for historical/schedule data; ESPN unofficial API for live in-season updates.**
 - Should the web app be an embedded C++ HTTP server, or generate static HTML files? **Resolved: embedded C++ HTTP server (cpp-httplib).**
 - Win probability model for simulation: ~~pure 50/50~~ fit a basic probabilistic model to historical data (home field advantage, prior-season team strength); not full Elo.
-- Should playoff simulation include postseason bracket simulation, or only regular-season outcome probabilities?
+- Should playoff simulation include postseason bracket simulation, or only regular-season outcome probabilities? **Deferred: postseason bracket simulation is a future item; not in scope for initial design.**
 - License / open-source intent?
