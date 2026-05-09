@@ -73,6 +73,8 @@ For each game scheduled in the coming week, compute the marginal impact of that 
 
 Teams will be stored with metadata in a separate `data/teams.csv` file (full name, abbreviation, conference, division). This file is static and maintained manually.
 
+**Note on current status:** For the 2026 season, game pairings are known (which teams play which), but the full schedule (dates, kickoff times) has not yet been officially released by the NFL. Once the schedule is released, it will be downloaded from nflverse and loaded into `data/schedule.csv` to seed the current season tracking.
+
 ### Historical Season Data
 
 Historical seasons (1999–present) from nflverse are cached locally in CSV format under `data/historical/`:
