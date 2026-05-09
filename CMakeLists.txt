@@ -8,4 +8,5 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(nfl3
     src/main.cpp
+    src/util/CsvParser.cpp
 )
