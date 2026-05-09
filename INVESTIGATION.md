@@ -61,16 +61,33 @@ Teams will be stored with metadata in a separate `data/teams.csv` file (full nam
 
 ## 4. Data Sources
 
-Inputs come from the web. Candidate sources to investigate:
+| Use case | Source |
+|----------|--------|
+| Historical data (1999–present) for backfitting win probability model | nflverse `games.csv` |
+| Seeding current season schedule | nflverse `games.csv` |
+| In-season live score updates | ESPN unofficial API |
 
-| Source | Notes |
-|--------|-------|
-| nfl.com | Official, may require scraping or unofficial API |
-| ESPN API (unofficial) | `site.api.espn.com` endpoints, JSON, no auth required for schedule/scores |
-| Pro Football Reference | Structured HTML tables, scrapable |
-| MySportsFeeds / SportsData.io | Commercial APIs with free tiers |
+### 4.1 Primary: nflverse
 
-**Decision needed:** Pick one primary source for schedule seeding and result updates. ESPN's unofficial API is a pragmatic starting point because it returns JSON and requires no API key.
+[nflverse](https://github.com/nflverse/nfldata) is the recommended primary source for historical and schedule data.
+
+- **Free:** Data files hosted directly on GitHub Releases as downloadable CSV/Parquet — no API key, no account, no scraping.
+- **Reliable:** Maintained by an active open-source analytics community; data is version-controlled.
+- **Historical depth:** Game results back to **1999**, sufficient for backfitting the win probability model.
+
+Key file: [`games.csv`](https://github.com/nflverse/nfldata/blob/master/data/games.csv) — one row per game with season, week, home/away team, final scores, location, and game type (regular season vs playoffs). Schema aligns closely with our `data/schedule.csv` design.
+
+Direct download (no auth required):
+```
+https://github.com/nflverse/nfldata/raw/master/data/games.csv
+```
+
+### 4.2 Secondary: ESPN Unofficial API
+
+The [ESPN unofficial JSON API](https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard) is suitable for **in-season live score updates** to automate `schedule.csv` result ingestion during the season. Not suitable for deep historical data.
+
+- No API key required; returns JSON.
+- Use [nlohmann/json](https://github.com/nlohmann/json) to parse in C++.
 
 ---
 
@@ -126,7 +143,7 @@ Possible C++ libraries to consider:
 
 ## 7. Open Questions
 
-- Which web source will be the primary data feed? (ESPN unofficial API recommended as first pass.)
+- Which web source will be the primary data feed? **Resolved: nflverse for historical/schedule data; ESPN unofficial API for live in-season updates.**
 - Should the web app be an embedded C++ HTTP server, or generate static HTML files?
 - Win probability model for simulation: ~~pure 50/50~~ fit a basic probabilistic model to historical data (home field advantage, prior-season team strength); not full Elo.
 - Should playoff simulation include postseason bracket simulation, or only regular-season outcome probabilities?
