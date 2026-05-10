@@ -66,6 +66,8 @@ int main(int argc, char* argv[]) {
                       << model.homeAdvantage << "\n"
                       << "  Slope (prev win pct diff): " << model.slopePrevWinPct << "\n"
                       << "  Strength weight (internal): " << model.strengthWeight << "\n"
+                      << "  Brier score: " << model.brierScore << "\n"
+                      << "  Log loss: " << model.logLoss << "\n"
                       << "Saved coefficients to " << DEFAULT_MODEL_COEFFS_PATH << std::endl;
             return 0;
         }

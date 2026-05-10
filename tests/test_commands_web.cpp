@@ -67,6 +67,10 @@ TEST_CASE("CommandSupport backfit model persistence round-trip", "[commands][bac
     REQUIRE(loaded.homeAdvantage == Approx(model.homeAdvantage).margin(1e-9));
     REQUIRE(loaded.strengthWeight == Approx(model.strengthWeight).margin(1e-9));
     REQUIRE(loaded.slopePrevWinPct == Approx(model.slopePrevWinPct).margin(1e-9));
+    REQUIRE(loaded.brierScore == Approx(model.brierScore).margin(1e-9));
+    REQUIRE(loaded.logLoss == Approx(model.logLoss).margin(1e-9));
+    REQUIRE(loaded.brierScore >= 0.0);
+    REQUIRE(loaded.logLoss >= 0.0);
 
     std::filesystem::remove_all(tempDir);
 }

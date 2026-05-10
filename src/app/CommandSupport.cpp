@@ -13,6 +13,24 @@ namespace nfl3 {
 
 namespace {
 
+double clampProbability(double p) {
+    return std::max(1e-6, std::min(1.0 - 1e-6, p));
+}
+
+double sigmoid(double x) {
+    if (x >= 0.0) {
+        const double z = std::exp(-x);
+        return 1.0 / (1.0 + z);
+    }
+    const double z = std::exp(x);
+    return z / (1.0 + z);
+}
+
+double logit(double p) {
+    const double c = clampProbability(p);
+    return std::log(c / (1.0 - c));
+}
+
 std::string requireField(const CsvParser::Row& row, const std::string& key) {
     auto it = row.find(key);
     if (it == row.end()) {
@@ -123,38 +141,54 @@ FittedModel fitModelFromHistoricalYear(int targetYear,
         throw std::runtime_error("No games available for fitting");
     }
 
-    double sumX = 0.0;
     double sumY = 0.0;
-    for (size_t i = 0; i < xs.size(); ++i) {
-        sumX += xs[i];
-        sumY += ys[i];
+    for (const double y : ys) {
+        sumY += y;
     }
 
-    const double meanX = sumX / static_cast<double>(xs.size());
-    const double meanY = sumY / static_cast<double>(ys.size());
+    // Fit logistic model p(home_win) = sigmoid(b0 + b1 * x).
+    double b0 = logit(sumY / static_cast<double>(ys.size()));
+    double b1 = 0.0;
 
-    double cov = 0.0;
-    double var = 0.0;
-    for (size_t i = 0; i < xs.size(); ++i) {
-        const double dx = xs[i] - meanX;
-        cov += dx * (ys[i] - meanY);
-        var += dx * dx;
-    }
+    const double invN = 1.0 / static_cast<double>(xs.size());
+    const double learningRate = 0.35;
+    const double l2 = 1e-4;
+    for (int iter = 0; iter < 2500; ++iter) {
+        double grad0 = 0.0;
+        double grad1 = 0.0;
+        for (size_t i = 0; i < xs.size(); ++i) {
+            const double p = sigmoid(b0 + b1 * xs[i]);
+            const double error = p - ys[i];
+            grad0 += error;
+            grad1 += error * xs[i];
+        }
+        grad0 *= invN;
+        grad1 = grad1 * invN + l2 * b1;
 
-    double slope = 0.0;
-    if (var > std::numeric_limits<double>::epsilon()) {
-        slope = cov / var;
+        b0 -= learningRate * grad0;
+        b1 -= learningRate * grad1;
     }
-    const double intercept = meanY - slope * meanX;
 
     FittedModel model;
     model.sampleSize = static_cast<int>(xs.size());
-    model.homeAdvantage = std::max(0.0, std::min(1.0, intercept));
-    model.slopePrevWinPct = slope;
+    model.homeAdvantage = clampProbability(sigmoid(b0));
+    model.slopePrevWinPct = b1;
 
     // Internally, MonteCarlo applies strengthWeight to team-strength diff where
     // strength diff is approximately 0.4 * previous-win-pct diff.
-    model.strengthWeight = std::max(0.0, slope / 0.4);
+    model.strengthWeight = std::max(0.0, b1 / 0.4);
+
+    double brier = 0.0;
+    double logLoss = 0.0;
+    for (size_t i = 0; i < xs.size(); ++i) {
+        const double p = clampProbability(sigmoid(b0 + b1 * xs[i]));
+        const double y = ys[i];
+        const double diff = p - y;
+        brier += diff * diff;
+        logLoss += -(y * std::log(p) + (1.0 - y) * std::log(1.0 - p));
+    }
+    model.brierScore = brier * invN;
+    model.logLoss = logLoss * invN;
 
     return model;
 }
@@ -169,6 +203,8 @@ void persistFittedModel(const FittedModel& model,
     rows.push_back({{"coefficient", "home_advantage"}, {"value", std::to_string(model.homeAdvantage)}});
     rows.push_back({{"coefficient", "slope_prev_winpct"}, {"value", std::to_string(model.slopePrevWinPct)}});
     rows.push_back({{"coefficient", "strength_weight"}, {"value", std::to_string(model.strengthWeight)}});
+    rows.push_back({{"coefficient", "brier_score"}, {"value", std::to_string(model.brierScore)}});
+    rows.push_back({{"coefficient", "log_loss"}, {"value", std::to_string(model.logLoss)}});
 
     CsvParser::write(outputPath, {"coefficient", "value"}, rows);
 }
@@ -189,6 +225,10 @@ bool loadFittedModel(const std::string& path, FittedModel& model) {
             model.strengthWeight = std::stod(value);
         } else if (key == "slope_prev_winpct") {
             model.slopePrevWinPct = std::stod(value);
+        } else if (key == "brier_score") {
+            model.brierScore = std::stod(value);
+        } else if (key == "log_loss") {
+            model.logLoss = std::stod(value);
         } else if (key == "sample_size") {
             model.sampleSize = std::stoi(value);
         }

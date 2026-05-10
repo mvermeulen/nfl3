@@ -11,6 +11,8 @@ struct FittedModel {
     double homeAdvantage = 0.57;
     double strengthWeight = 0.15;
     double slopePrevWinPct = 0.0;
+    double brierScore = 0.0;
+    double logLoss = 0.0;
     int sampleSize = 0;
 };
 

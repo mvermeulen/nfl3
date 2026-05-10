@@ -73,6 +73,24 @@ int wildcardSpotsPerConference(int seasonYear) {
     return 2;
 }
 
+double clampProbability(double p) {
+    return std::max(1e-6, std::min(1.0 - 1e-6, p));
+}
+
+double logit(double p) {
+    const double c = clampProbability(p);
+    return std::log(c / (1.0 - c));
+}
+
+double sigmoid(double x) {
+    if (x >= 0.0) {
+        const double z = std::exp(-x);
+        return 1.0 / (1.0 + z);
+    }
+    const double z = std::exp(x);
+    return z / (1.0 + z);
+}
+
 } // namespace
 
 ImpactAnalysisResults MonteCarlo::analyzeImpact(const Season& season,
@@ -204,20 +222,12 @@ double MonteCarlo::getWinProbability(const Team& homeTeam, const Team& awayTeam)
     // Get team strength factors
     double homeStrength = getTeamStrengthFactor(homeTeam);
     double awayStrength = getTeamStrengthFactor(awayTeam);
-    
-    // Normalize: if both are 0.5, home team should have 57% win rate
-    // Weighted combination of strength and home advantage
-    double homeWinProb = homeAdvantage_;
-    
-    // Adjust based on strength differential
-    // If home team is stronger, increase probability; if weaker, decrease
-    double strengthDiff = homeStrength - awayStrength;
-    homeWinProb += strengthDiff * strengthWeight_;
-    
-    // Clamp to valid probability range
-    homeWinProb = std::max(0.0, std::min(1.0, homeWinProb));
-    
-    return homeWinProb;
+
+    // Use a bounded logistic form so probability remains well-calibrated and
+    // interpretable as the strength signal changes.
+    const double strengthDiff = homeStrength - awayStrength;
+    const double score = logit(homeAdvantage_) + strengthWeight_ * strengthDiff;
+    return sigmoid(score);
 }
 
 void MonteCarlo::setModelParameters(double homeAdvantage, double strengthWeight) {
