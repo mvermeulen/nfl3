@@ -22,6 +22,7 @@ void printUsage() {
               << "  ./nfl3 simulate [iterations]\n"
               << "  ./nfl3 impact [iterations]\n"
               << "  ./nfl3 load-schedule <path>\n"
+              << "  ./nfl3 calibration-report <start-year> <end-year>\n"
               << "  ./nfl3 web [port]\n"
               << "  ./nfl3 backfit-model <year>\n";
 }
@@ -69,6 +70,41 @@ int main(int argc, char* argv[]) {
                       << "  Brier score: " << model.brierScore << "\n"
                       << "  Log loss: " << model.logLoss << "\n"
                       << "Saved coefficients to " << DEFAULT_MODEL_COEFFS_PATH << std::endl;
+            return 0;
+        }
+
+        if (command == "calibration-report") {
+            if (argc < 4) {
+                throw std::runtime_error("calibration-report requires start and end years");
+            }
+
+            const int startYear = std::stoi(argv[2]);
+            const int endYear = std::stoi(argv[3]);
+            const auto report = nfl3::buildCalibrationReport(
+                startYear,
+                endYear,
+                DEFAULT_TEAMS_PATH,
+                DEFAULT_HISTORICAL_DIR);
+
+            std::cout << "Calibration report (" << startYear << "-" << endYear << ")\n";
+            std::cout << std::left << std::setw(8) << "Year"
+                      << std::setw(12) << "Samples"
+                      << std::setw(14) << "Home Adv"
+                      << std::setw(14) << "Strength"
+                      << std::setw(14) << "Brier"
+                      << std::setw(14) << "Log Loss" << std::endl;
+            std::cout << std::string(76, '-') << std::endl;
+
+            for (const auto& row : report) {
+                std::cout << std::left << std::setw(8) << row.seasonYear
+                          << std::setw(12) << row.model.sampleSize
+                          << std::setw(14) << std::fixed << std::setprecision(4)
+                          << row.model.homeAdvantage
+                          << std::setw(14) << row.model.strengthWeight
+                          << std::setw(14) << row.model.brierScore
+                          << std::setw(14) << row.model.logLoss
+                          << std::endl;
+            }
             return 0;
         }
 

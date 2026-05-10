@@ -193,6 +193,24 @@ FittedModel fitModelFromHistoricalYear(int targetYear,
     return model;
 }
 
+std::vector<CalibrationReportRow> buildCalibrationReport(int startYear,
+                                                         int endYear,
+                                                         const std::string& teamsPath,
+                                                         const std::string& historicalDir) {
+    if (startYear > endYear) {
+        throw std::invalid_argument("startYear must be <= endYear");
+    }
+
+    std::vector<CalibrationReportRow> report;
+    report.reserve(static_cast<size_t>(endYear - startYear + 1));
+
+    for (int year = startYear; year <= endYear; ++year) {
+        report.push_back({year, fitModelFromHistoricalYear(year, teamsPath, historicalDir)});
+    }
+
+    return report;
+}
+
 void persistFittedModel(const FittedModel& model,
                         int targetYear,
                         const std::string& outputPath) {

@@ -16,6 +16,11 @@ struct FittedModel {
     int sampleSize = 0;
 };
 
+struct CalibrationReportRow {
+    int seasonYear = 0;
+    FittedModel model;
+};
+
 Season loadSeasonFromCsvFiles(const std::string& teamsPath,
                               const std::string& schedulePath);
 
@@ -25,6 +30,11 @@ void copyScheduleToPath(const std::string& sourcePath,
 FittedModel fitModelFromHistoricalYear(int targetYear,
                                        const std::string& teamsPath,
                                        const std::string& historicalDir);
+
+std::vector<CalibrationReportRow> buildCalibrationReport(int startYear,
+                                                         int endYear,
+                                                         const std::string& teamsPath,
+                                                         const std::string& historicalDir);
 
 void persistFittedModel(const FittedModel& model,
                         int targetYear,

@@ -17,6 +17,7 @@ cmake --build build
 ./build/nfl3 simulate 100000
 ./build/nfl3 impact 100000
 ./build/nfl3 load-schedule /path/to/schedule.csv
+./build/nfl3 calibration-report 2019 2025
 ./build/nfl3 backfit-model 2025
 ./build/nfl3 web 8080
 ```
@@ -24,7 +25,8 @@ cmake --build build
 Notes:
 
 - `load-schedule` validates required columns and writes canonical schedule data to `data/schedule.csv`.
-- `backfit-model <YEAR>` fits a lightweight linear model using `data/historical/<YEAR-1>.csv` (team strength proxy) and `data/historical/<YEAR>.csv` (outcomes), then saves coefficients to `data/model_coefficients.csv`.
+- `calibration-report <START> <END>` prints a year-by-year table of fitted logistic calibration metrics (Brier score and log loss) over the requested historical range.
+- `backfit-model <YEAR>` fits a lightweight logistic model using `data/historical/<YEAR-1>.csv` (team strength proxy) and `data/historical/<YEAR>.csv` (outcomes), then saves coefficients to `data/model_coefficients.csv`.
 - `simulate`, `impact`, and `web` automatically use `data/model_coefficients.csv` when present.
 - `web` serves local pages at `http://127.0.0.1:<port>`.
 

@@ -75,6 +75,25 @@ TEST_CASE("CommandSupport backfit model persistence round-trip", "[commands][bac
     std::filesystem::remove_all(tempDir);
 }
 
+TEST_CASE("CommandSupport calibration report spans a year range", "[commands][calibration]") {
+    const std::string teamsPath = std::string(NFL3_SOURCE_DIR) + "/data/teams.csv";
+    const std::string historicalDir = std::string(NFL3_SOURCE_DIR) + "/data/historical";
+
+    const auto report = nfl3::buildCalibrationReport(2024, 2025, teamsPath, historicalDir);
+
+    REQUIRE(report.size() == 2);
+    REQUIRE(report[0].seasonYear == 2024);
+    REQUIRE(report[1].seasonYear == 2025);
+
+    for (const auto& row : report) {
+        REQUIRE(row.model.sampleSize > 0);
+        REQUIRE(row.model.homeAdvantage >= 0.0);
+        REQUIRE(row.model.homeAdvantage <= 1.0);
+        REQUIRE(row.model.brierScore >= 0.0);
+        REQUIRE(row.model.logLoss >= 0.0);
+    }
+}
+
 TEST_CASE("WebServer API endpoints return expected payloads", "[web]") {
     const std::string teamsPath = std::string(NFL3_SOURCE_DIR) + "/data/teams.csv";
     const std::string schedulePath = std::string(NFL3_SOURCE_DIR) + "/data/schedule.csv";
