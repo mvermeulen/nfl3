@@ -112,8 +112,15 @@ public:
      */
     double getTeamStrengthFactor(const Team& team) const;
 
+    /**
+     * Configure model coefficients used by getWinProbability.
+     */
+    void setModelParameters(double homeAdvantage, double strengthWeight);
+
 private:
     mutable std::mt19937 rng_;  // Random number generator
+    double homeAdvantage_ = 0.57;
+    double strengthWeight_ = 0.15;
     
     /**
      * Simulate a single iteration of the season.

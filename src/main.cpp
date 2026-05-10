@@ -2,12 +2,31 @@
 #include <algorithm>
 #include <iomanip>
 #include <string>
-#include "util/CsvParser.h"
-#include "model/Team.h"
-#include "model/Game.h"
+#include <stdexcept>
+#include "app/CommandSupport.h"
 #include "model/Season.h"
 #include "model/MonteCarlo.h"
 #include "output/AsciiPrinter.h"
+#include "output/WebServer.h"
+
+namespace {
+
+const std::string DEFAULT_TEAMS_PATH = "data/teams.csv";
+const std::string DEFAULT_SCHEDULE_PATH = "data/schedule.csv";
+const std::string DEFAULT_HISTORICAL_DIR = "data/historical";
+const std::string DEFAULT_MODEL_COEFFS_PATH = "data/model_coefficients.csv";
+
+void printUsage() {
+    std::cerr << "Usage:\n"
+              << "  ./nfl3 status\n"
+              << "  ./nfl3 simulate [iterations]\n"
+              << "  ./nfl3 impact [iterations]\n"
+              << "  ./nfl3 load-schedule <path>\n"
+              << "  ./nfl3 web [port]\n"
+              << "  ./nfl3 backfit-model <year>\n";
+}
+
+} // namespace
 
 int main(int argc, char* argv[]) {
     try {
@@ -18,39 +37,51 @@ int main(int argc, char* argv[]) {
 
         std::cout << "=== nfl3 NFL Game State Tracker ===" << std::endl << std::endl;
 
-        // Load teams
-        std::cout << "Loading teams from data/teams.csv..." << std::endl;
-        auto teamsData = CsvParser::parse("data/teams.csv");
-        
-        Season season;
-        for (const auto& row : teamsData) {
-            std::string abbr = row.at("abbreviation");
-            std::string fullName = row.at("full_name");
-            std::string conference = row.at("conference");
-            std::string division = row.at("division");
-            
-            Team team(abbr, fullName, conference, division);
-            season.addTeam(team);
+        if (command == "load-schedule") {
+            if (argc < 3) {
+                throw std::runtime_error("load-schedule requires a CSV path");
+            }
+            nfl3::copyScheduleToPath(argv[2], DEFAULT_SCHEDULE_PATH);
+            std::cout << "Loaded schedule from " << argv[2]
+                      << " into " << DEFAULT_SCHEDULE_PATH << std::endl;
+            return 0;
         }
-        std::cout << "Loaded " << teamsData.size() << " teams." << std::endl << std::endl;
 
-        // Load schedule
-        std::cout << "Loading schedule from data/schedule.csv..." << std::endl;
-        auto scheduleData = CsvParser::parse("data/schedule.csv");
-        
-        for (const auto& row : scheduleData) {
-            int week = std::stoi(row.at("week"));
-            std::string date = row.at("date");
-            std::string homeTeam = row.at("home_team");
-            std::string awayTeam = row.at("away_team");
-            int homeScore = std::stoi(row.at("home_score"));
-            int awayScore = std::stoi(row.at("away_score"));
-            std::string status = row.at("status");
-            
-            Game game(week, date, homeTeam, awayTeam, homeScore, awayScore, status);
-            season.addGame(game);
+        if (command == "backfit-model") {
+            if (argc < 3) {
+                throw std::runtime_error("backfit-model requires a target year");
+            }
+
+            const int year = std::stoi(argv[2]);
+            const nfl3::FittedModel model = nfl3::fitModelFromHistoricalYear(
+                year,
+                DEFAULT_TEAMS_PATH,
+                DEFAULT_HISTORICAL_DIR);
+
+            nfl3::persistFittedModel(model, year, DEFAULT_MODEL_COEFFS_PATH);
+
+            std::cout << "Fitted model using historical season " << year << "\n"
+                      << "  Samples: " << model.sampleSize << "\n"
+                      << "  Home advantage: " << std::fixed << std::setprecision(4)
+                      << model.homeAdvantage << "\n"
+                      << "  Slope (prev win pct diff): " << model.slopePrevWinPct << "\n"
+                      << "  Strength weight (internal): " << model.strengthWeight << "\n"
+                      << "Saved coefficients to " << DEFAULT_MODEL_COEFFS_PATH << std::endl;
+            return 0;
         }
-        std::cout << "Loaded " << scheduleData.size() << " games." << std::endl << std::endl;
+
+        // Load teams
+        std::cout << "Loading teams from " << DEFAULT_TEAMS_PATH << "..." << std::endl;
+        std::cout << "Loading schedule from " << DEFAULT_SCHEDULE_PATH << "..." << std::endl;
+        Season season = nfl3::loadSeasonFromCsvFiles(DEFAULT_TEAMS_PATH, DEFAULT_SCHEDULE_PATH);
+        std::cout << "Loaded " << season.allTeams().size() << " teams and "
+                  << season.allGames().size() << " games." << std::endl << std::endl;
+
+        nfl3::FittedModel model;
+        if (nfl3::loadFittedModel(DEFAULT_MODEL_COEFFS_PATH, model)) {
+            std::cout << "Using fitted model from " << DEFAULT_MODEL_COEFFS_PATH
+                      << " (samples=" << model.sampleSize << ")" << std::endl;
+        }
 
         if (command == "status") {
             std::cout << "Computing standings..." << std::endl;
@@ -68,6 +99,7 @@ int main(int argc, char* argv[]) {
 
             season.computeStandings();
             MonteCarlo mc;
+            nfl3::applyModelToMonteCarlo(mc, model);
             auto results = mc.simulate(season, iterations, 12345);
 
             std::vector<std::pair<std::string, double>> ordered;
@@ -99,6 +131,7 @@ int main(int argc, char* argv[]) {
 
             season.computeStandings();
             MonteCarlo mc;
+            nfl3::applyModelToMonteCarlo(mc, model);
             auto impact = mc.analyzeImpact(season, iterations, 12345);
 
             if (impact.week < 0 || impact.gameImpacts.empty()) {
@@ -122,9 +155,21 @@ int main(int argc, char* argv[]) {
                           << std::setw(14) << gameImpact.awayDeltaPlayoffProb * 100.0
                           << std::endl;
             }
+        } else if (command == "web") {
+            int port = 8080;
+            if (argc > 2) {
+                port = std::stoi(argv[2]);
+            }
+
+            WebServer server(season,
+                             DEFAULT_SCHEDULE_PATH,
+                             model.homeAdvantage,
+                             model.strengthWeight,
+                             100000);
+            server.run(port);
         } else {
-            std::cerr << "Unknown command: " << command << "\n"
-                      << "Usage: ./nfl3 [status|simulate|impact] [iterations]" << std::endl;
+            std::cerr << "Unknown command: " << command << std::endl;
+            printUsage();
             return 1;
         }
 

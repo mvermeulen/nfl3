@@ -181,26 +181,28 @@ SimulationResults MonteCarlo::simulate(const Season& season,
 }
 
 double MonteCarlo::getWinProbability(const Team& homeTeam, const Team& awayTeam) const {
-    // Base home field advantage: ~57%
-    const double HOME_ADVANTAGE = 0.57;
-    
     // Get team strength factors
     double homeStrength = getTeamStrengthFactor(homeTeam);
     double awayStrength = getTeamStrengthFactor(awayTeam);
     
     // Normalize: if both are 0.5, home team should have 57% win rate
     // Weighted combination of strength and home advantage
-    double homeWinProb = HOME_ADVANTAGE;
+    double homeWinProb = homeAdvantage_;
     
     // Adjust based on strength differential
     // If home team is stronger, increase probability; if weaker, decrease
     double strengthDiff = homeStrength - awayStrength;
-    homeWinProb += strengthDiff * 0.15;  // Up to ±15% adjustment based on strength
+    homeWinProb += strengthDiff * strengthWeight_;
     
     // Clamp to valid probability range
     homeWinProb = std::max(0.0, std::min(1.0, homeWinProb));
     
     return homeWinProb;
+}
+
+void MonteCarlo::setModelParameters(double homeAdvantage, double strengthWeight) {
+    homeAdvantage_ = std::max(0.0, std::min(1.0, homeAdvantage));
+    strengthWeight_ = std::max(0.0, strengthWeight);
 }
 
 PlayoffOutcome MonteCarlo::simulateIteration(const Season& season) {

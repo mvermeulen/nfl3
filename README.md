@@ -10,6 +10,35 @@ cmake --build build
 ./build/nfl3
 ```
 
+## CLI Commands
+
+```bash
+./build/nfl3 status
+./build/nfl3 simulate 100000
+./build/nfl3 impact 100000
+./build/nfl3 load-schedule /path/to/schedule.csv
+./build/nfl3 backfit-model 2025
+./build/nfl3 web 8080
+```
+
+Notes:
+
+- `load-schedule` validates required columns and writes canonical schedule data to `data/schedule.csv`.
+- `backfit-model <YEAR>` fits a lightweight linear model using `data/historical/<YEAR-1>.csv` (team strength proxy) and `data/historical/<YEAR>.csv` (outcomes), then saves coefficients to `data/model_coefficients.csv`.
+- `simulate`, `impact`, and `web` automatically use `data/model_coefficients.csv` when present.
+- `web` serves local pages at `http://127.0.0.1:<port>`.
+
+## Web Endpoints
+
+- `GET /` and `GET /standings`: standings dashboard
+- `GET /simulation`: simulation dashboard (`?iterations=<N>` optional)
+- `GET /impact`: impact dashboard (`?iterations=<N>` optional)
+- `GET /api/standings`: standings JSON
+- `GET /api/simulation?iterations=<N>`: simulation JSON
+- `GET /api/impact?iterations=<N>`: impact JSON
+- `POST /api/update-result`: apply a game result and persist to `data/schedule.csv`
+	- Body (x-www-form-urlencoded): `week`, `home_team`, `away_team`, `home_score`, `away_score`
+
 See [INVESTIGATION.md](INVESTIGATION.md) for project goals and architecture.
 
 ## Historical Data Refresh

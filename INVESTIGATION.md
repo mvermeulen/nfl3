@@ -1,7 +1,7 @@
 # nfl3 — Investigation Report
 
-**Date:** May 9, 2026  
-**Status:** Draft
+**Date:** May 10, 2026  
+**Status:** Implemented v1 commands (status/simulate/impact/load-schedule/web/backfit-model)
 
 ---
 
@@ -121,7 +121,7 @@ Historical seasons are fetched once from nflverse and cached locally in `data/hi
 
 ---
 
-## 5. Architecture (proposed)
+## 5. Architecture
 
 ```
 nfl3/
@@ -134,17 +134,15 @@ nfl3/
 │   ├── model/
 │   │   ├── Team.h/.cpp    # team record, division, conference
 │   │   ├── Game.h/.cpp    # game record (parsed from CSV)
-│   │   └── Season.h/.cpp  # full season state
-│   ├── standings/
-│   │   ├── Standings.h/.cpp   # compute records from results
-│   │   └── Tiebreaker.h/.cpp  # NFL tiebreaker rule chain
-│   ├── sim/
+│   │   ├── Season.h/.cpp  # full season state
+│   │   ├── Tiebreaker.h/.cpp  # NFL tiebreaker rule chain
 │   │   └── MonteCarlo.h/.cpp  # simulation engine
 │   ├── output/
 │   │   ├── AsciiPrinter.h/.cpp
 │   │   └── WebServer.h/.cpp   # simple embedded HTTP server
 │   └── util/
-│       └── CsvParser.h/.cpp
+│       ├── CsvParser.h/.cpp
+│       └── BacktestFixtureLoader.h/.cpp
 └── INVESTIGATION.md
 ```
 
@@ -172,15 +170,16 @@ The program is a command-line tool with a simple invocation pattern:
 - `status` — Compute and display current standings + playoff scenarios (default if no command given).
 - `simulate [N]` — Run N Monte Carlo simulations (default: 100,000) and display playoff probability distributions.
 - `impact` — Analyze the impact of each game in the coming week on playoff probabilities for all teams involved.
-- `load-schedule <PATH>` — Load schedule CSV from custom path (default: `data/schedule.csv`).
-- `web [PORT]` — Start HTTP server on given port (default: 8080); opens local browser to standings dashboard.
-- `backfit-model <YEAR>` — Load historical season from local cache (`data/historical/<YEAR>.csv`) and fit win probability model; output fitted coefficients.
+- `load-schedule <PATH>` — Validate and copy schedule CSV from custom path into canonical `data/schedule.csv`.
+- `web [PORT]` — Start embedded HTTP server on given port (default: 8080).
+- `backfit-model <YEAR>` — Fit a lightweight model using `data/historical/<YEAR-1>.csv` and `data/historical/<YEAR>.csv`; writes coefficients to `data/model_coefficients.csv`.
 
 **Examples:**
 ```bash
 ./nfl3 status                      # Show current standings
 ./nfl3 simulate 100000             # Run 100k simulations (default is 100k)
 ./nfl3 impact                      # Show impact of next week's games on playoff odds
+./nfl3 load-schedule /tmp/s.csv    # Validate and install schedule into data/schedule.csv
 ./nfl3 web 9000                    # Start web server on :9000
 ./nfl3 backfit-model 2023          # Fit model on 2023 season from local cache
 ```

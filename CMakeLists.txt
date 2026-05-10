@@ -13,6 +13,7 @@ include_directories(${CMAKE_SOURCE_DIR}/tests/include)
 
 add_executable(nfl3
     src/main.cpp
+    src/app/CommandSupport.cpp
     src/util/CsvParser.cpp
     src/util/BacktestFixtureLoader.cpp
     src/model/Team.cpp
@@ -21,6 +22,7 @@ add_executable(nfl3
     src/model/Tiebreaker.cpp
     src/model/MonteCarlo.cpp
     src/output/AsciiPrinter.cpp
+    src/output/WebServer.cpp
 )
 
 # Test executable
@@ -29,6 +31,8 @@ enable_testing()
 add_executable(nfl3_tests
     tests/test_main.cpp
     tests/test_backtest_fixture_loader.cpp
+    tests/test_cli_integration.cpp
+    tests/test_commands_web.cpp
     tests/test_team.cpp
     tests/test_game.cpp
     tests/test_tiebreaker.cpp
@@ -37,12 +41,14 @@ add_executable(nfl3_tests
     tests/test_montecarlo.cpp
     src/util/CsvParser.cpp
     src/util/BacktestFixtureLoader.cpp
+    src/app/CommandSupport.cpp
     src/model/Team.cpp
     src/model/Game.cpp
     src/model/Season.cpp
     src/model/Tiebreaker.cpp
     src/model/MonteCarlo.cpp
     src/output/AsciiPrinter.cpp
+    src/output/WebServer.cpp
 )
 
 target_compile_definitions(nfl3_tests PRIVATE NFL3_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
