@@ -18,6 +18,10 @@ CsvParser::Table CsvParser::parse(const std::string& filename) {
     while (std::getline(file, line)) {
         ++lineNum;
 
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+
         // Skip empty lines
         if (line.empty()) continue;
 

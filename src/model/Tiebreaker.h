@@ -28,7 +28,7 @@ public:
                                        const std::map<std::string, Team>& allTeams,
                                        const std::string& divisionName = "");
 
-private:
+public:
     /**
      * Helper: Compute head-to-head record between two teams.
      * @param team1 First team
@@ -38,16 +38,6 @@ private:
      */
     static int headToHeadRecord(const Team& team1, const Team& team2, 
                                const std::vector<Game>& games);
-
-    /**
-     * Helper: Count head-to-head wins for a team against specific opponents.
-     * @param team Team to check
-     * @param opponents Teams to compute head-to-head record against
-     * @param games All games
-     * @return Wins by team against any opponent in the list
-     */
-    static int headToHeadWins(const Team& team, const std::vector<Team*>& opponents,
-                             const std::vector<Game>& games);
 
     /**
      * Helper: Compute strength of victory (total wins of defeated opponents).

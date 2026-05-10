@@ -1,6 +1,63 @@
 #include "MonteCarlo.h"
 #include <cmath>
 #include <algorithm>
+#include <exception>
+#include <map>
+
+namespace {
+
+int detectSeasonYear(const Season& season) {
+    int seasonYear = -1;
+    for (const auto& game : season.allGames()) {
+        const std::string& date = game.date();
+        if (date.size() < 4) {
+            continue;
+        }
+        try {
+            const int year = std::stoi(date.substr(0, 4));
+            if (seasonYear < 0 || year < seasonYear) {
+                seasonYear = year;
+            }
+        } catch (const std::exception&) {
+            // Ignore malformed dates and keep scanning.
+        }
+    }
+    return seasonYear;
+}
+
+int fallbackGamesPerTeamFromYear(int seasonYear) {
+    if (seasonYear >= 2021) {
+        return 17;
+    }
+    return 16;
+}
+
+int inferScheduledGamesPerTeam(const Season& season, int fallback) {
+    std::map<std::string, int> scheduleCounts;
+    for (const auto& game : season.allGames()) {
+        scheduleCounts[game.homeTeam()]++;
+        scheduleCounts[game.awayTeam()]++;
+    }
+
+    int maxGames = 0;
+    for (const auto& [abbr, count] : scheduleCounts) {
+        if (count > maxGames) {
+            maxGames = count;
+        }
+    }
+
+    return maxGames > 0 ? maxGames : fallback;
+}
+
+int wildcardSpotsPerConference(int seasonYear) {
+    // NFL expanded from 2 to 3 wild cards per conference in 2020.
+    if (seasonYear >= 2020) {
+        return 3;
+    }
+    return 2;
+}
+
+} // namespace
 
 ImpactAnalysisResults MonteCarlo::analyzeImpact(const Season& season,
                                                 int iterations,
@@ -61,6 +118,12 @@ SimulationResults MonteCarlo::simulate(const Season& season,
     
     SimulationResults results;
     results.totalIterations = iterations;
+
+    const int seasonYear = detectSeasonYear(season);
+    const int totalGamesPerTeam = inferScheduledGamesPerTeam(
+        season,
+        fallbackGamesPerTeamFromYear(seasonYear)
+    );
     
     // Initialize all probabilities to 0
     for (const auto& [abbr, team] : season.allTeams()) {
@@ -108,9 +171,9 @@ SimulationResults MonteCarlo::simulate(const Season& season,
         }
         
         // Estimated end-of-season win percentage
-        double estimatedWins = team.wins() + results.playoffProbability[abbr] * 
-                              (16 - team.gamesPlayed());  // Simplified estimate
-        results.teamWinProbability[abbr] = estimatedWins / 16.0;  // 16 games in season
+        const int remainingGames = std::max(0, totalGamesPerTeam - team.gamesPlayed());
+        const double estimatedWins = team.wins() + results.playoffProbability[abbr] * remainingGames;
+        results.teamWinProbability[abbr] = estimatedWins / static_cast<double>(totalGamesPerTeam);
     }
     
     results.outcomes = aggregateOutcomes;
@@ -202,6 +265,7 @@ void MonteCarlo::simulateRemainingGames(Season& season) {
 
 PlayoffOutcome MonteCarlo::determinePlayoffs(const Season& season) {
     PlayoffOutcome outcome;
+    const int seasonYear = detectSeasonYear(season);
     
     // Get all divisions
     auto divisions = season.getDivisions();
@@ -231,7 +295,7 @@ PlayoffOutcome MonteCarlo::determinePlayoffs(const Season& season) {
         auto confStandings = season.teamsByConference(conf);
         
         // Count wild cards (additional playoff spots beyond division winners)
-        int wildcardSpots = 3;  // 3 wild cards per conference in NFL
+        const int wildcardSpots = wildcardSpotsPerConference(seasonYear);
         int wildcardAdded = 0;
         
         for (const auto* team : confStandings) {
