@@ -82,6 +82,11 @@ void Season::computeStandings() {
                 homeTeam->addConferenceLoss();
             }
         }
+
+        homeTeam->addPointsFor(game.homeScore());
+        homeTeam->addPointsAgainst(game.awayScore());
+        awayTeam->addPointsFor(game.awayScore());
+        awayTeam->addPointsAgainst(game.homeScore());
     }
 }
 

@@ -66,7 +66,9 @@ int main(int argc, char* argv[]) {
                       << "  Home advantage: " << std::fixed << std::setprecision(4)
                       << model.homeAdvantage << "\n"
                       << "  Slope (prev win pct diff): " << model.slopePrevWinPct << "\n"
+                      << "  Slope (prev point diff): " << model.slopePrevPointDifferential << "\n"
                       << "  Strength weight (internal): " << model.strengthWeight << "\n"
+                      << "  Point diff weight: " << model.pointDifferentialWeight << "\n"
                       << "  Brier score: " << model.brierScore << "\n"
                       << "  Log loss: " << model.logLoss << "\n"
                       << "Saved coefficients to " << DEFAULT_MODEL_COEFFS_PATH << std::endl;
@@ -91,6 +93,7 @@ int main(int argc, char* argv[]) {
                       << std::setw(12) << "Samples"
                       << std::setw(14) << "Home Adv"
                       << std::setw(14) << "Strength"
+                      << std::setw(14) << "Pts Diff"
                       << std::setw(14) << "Brier"
                       << std::setw(14) << "Log Loss" << std::endl;
             std::cout << std::string(76, '-') << std::endl;
@@ -101,6 +104,7 @@ int main(int argc, char* argv[]) {
                           << std::setw(14) << std::fixed << std::setprecision(4)
                           << row.model.homeAdvantage
                           << std::setw(14) << row.model.strengthWeight
+                          << std::setw(14) << row.model.pointDifferentialWeight
                           << std::setw(14) << row.model.brierScore
                           << std::setw(14) << row.model.logLoss
                           << std::endl;

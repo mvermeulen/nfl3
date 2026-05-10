@@ -26,6 +26,7 @@ Notes:
 
 - `load-schedule` validates required columns and writes canonical schedule data to `data/schedule.csv`.
 - `calibration-report <START> <END>` prints a year-by-year table of fitted logistic calibration metrics (Brier score and log loss) over the requested historical range.
+- The calibration work also tested a prior-season point-differential signal, but it did not improve Brier score or log loss and was removed from the current prediction path.
 - `backfit-model <YEAR>` fits a lightweight logistic model using `data/historical/<YEAR-1>.csv` (team strength proxy) and `data/historical/<YEAR>.csv` (outcomes), then saves coefficients to `data/model_coefficients.csv`.
 - `simulate`, `impact`, and `web` automatically use `data/model_coefficients.csv` when present.
 - `web` serves local pages at `http://127.0.0.1:<port>`.

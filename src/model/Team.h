@@ -28,6 +28,11 @@ public:
     int losses() const { return losses_; }
     int ties() const { return ties_; }
     int gamesPlayed() const { return wins_ + losses_ + ties_; }
+    int pointsFor() const { return pointsFor_; }
+    int pointsAgainst() const { return pointsAgainst_; }
+    int pointDifferential() const { return pointsFor_ - pointsAgainst_; }
+
+    double pointDifferentialPerGame() const;
 
     /**
      * Win percentage (0.0 - 1.0).
@@ -39,6 +44,8 @@ public:
     void addWin() { wins_++; }
     void addLoss() { losses_++; }
     void addTie() { ties_++; }
+    void addPointsFor(int points) { pointsFor_ += points; }
+    void addPointsAgainst(int points) { pointsAgainst_ += points; }
     
     // Division record (wins/losses/ties within division)
     int divisionWins() const { return divisionWins_; }
@@ -66,6 +73,8 @@ public:
         conferenceWins_ = 0;
         conferenceLosses_ = 0;
         conferenceTies_ = 0;
+        pointsFor_ = 0;
+        pointsAgainst_ = 0;
     }
 
 private:
@@ -82,6 +91,8 @@ private:
     int conferenceWins_ = 0;
     int conferenceLosses_ = 0;
     int conferenceTies_ = 0;
+    int pointsFor_ = 0;
+    int pointsAgainst_ = 0;
 };
 
 #endif // TEAM_H

@@ -13,3 +13,11 @@ double Team::winPercentage() const {
     if (total == 0) return 0.0;
     return (wins_ + 0.5 * ties_) / total;
 }
+
+double Team::pointDifferentialPerGame() const {
+  const int total = gamesPlayed();
+  if (total == 0) {
+    return 0.0;
+  }
+  return static_cast<double>(pointsFor_ - pointsAgainst_) / static_cast<double>(total);
+}

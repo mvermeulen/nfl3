@@ -116,12 +116,15 @@ public:
     /**
      * Configure model coefficients used by getWinProbability.
      */
-    void setModelParameters(double homeAdvantage, double strengthWeight);
+    void setModelParameters(double homeAdvantage,
+                            double strengthWeight,
+                            double pointDifferentialWeight = 0.0);
 
 private:
     mutable std::mt19937 rng_;  // Random number generator
     double homeAdvantage_ = 0.57;
     double strengthWeight_ = 0.15;
+    double pointDifferentialWeight_ = 0.0;
     
     /**
      * Simulate a single iteration of the season.

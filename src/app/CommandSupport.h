@@ -10,7 +10,9 @@ namespace nfl3 {
 struct FittedModel {
     double homeAdvantage = 0.57;
     double strengthWeight = 0.15;
+    double pointDifferentialWeight = 0.0;
     double slopePrevWinPct = 0.0;
+    double slopePrevPointDifferential = 0.0;
     double brierScore = 0.0;
     double logLoss = 0.0;
     int sampleSize = 0;

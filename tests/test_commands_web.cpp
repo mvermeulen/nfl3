@@ -4,11 +4,29 @@
 #include "output/WebServer.h"
 #include "util/CsvParser.h"
 
+#include <array>
 #include <filesystem>
 #include <fstream>
+#include <cmath>
 #include <string>
 
 namespace {
+
+struct CalibrationBaseline {
+    int seasonYear;
+    double maxBrier;
+    double maxLogLoss;
+};
+
+constexpr std::array<CalibrationBaseline, 7> kCalibrationBaselines = {{
+    {2019, 0.2428, 0.6806},
+    {2020, 0.2374, 0.6691},
+    {2021, 0.2323, 0.6584},
+    {2022, 0.2465, 0.6897},
+    {2023, 0.2454, 0.6838},
+    {2024, 0.2447, 0.6822},
+    {2025, 0.2462, 0.6871},
+}};
 
 std::filesystem::path makeTempDir() {
     const auto base = std::filesystem::temp_directory_path();
@@ -67,6 +85,8 @@ TEST_CASE("CommandSupport backfit model persistence round-trip", "[commands][bac
     REQUIRE(loaded.homeAdvantage == Approx(model.homeAdvantage).margin(1e-9));
     REQUIRE(loaded.strengthWeight == Approx(model.strengthWeight).margin(1e-9));
     REQUIRE(loaded.slopePrevWinPct == Approx(model.slopePrevWinPct).margin(1e-9));
+    REQUIRE(loaded.pointDifferentialWeight == Approx(model.pointDifferentialWeight).margin(1e-9));
+    REQUIRE(loaded.slopePrevPointDifferential == Approx(model.slopePrevPointDifferential).margin(1e-9));
     REQUIRE(loaded.brierScore == Approx(model.brierScore).margin(1e-9));
     REQUIRE(loaded.logLoss == Approx(model.logLoss).margin(1e-9));
     REQUIRE(loaded.brierScore >= 0.0);
@@ -79,18 +99,23 @@ TEST_CASE("CommandSupport calibration report spans a year range", "[commands][ca
     const std::string teamsPath = std::string(NFL3_SOURCE_DIR) + "/data/teams.csv";
     const std::string historicalDir = std::string(NFL3_SOURCE_DIR) + "/data/historical";
 
-    const auto report = nfl3::buildCalibrationReport(2024, 2025, teamsPath, historicalDir);
+    const auto report = nfl3::buildCalibrationReport(2019, 2025, teamsPath, historicalDir);
 
-    REQUIRE(report.size() == 2);
-    REQUIRE(report[0].seasonYear == 2024);
-    REQUIRE(report[1].seasonYear == 2025);
+    REQUIRE(report.size() == kCalibrationBaselines.size());
 
-    for (const auto& row : report) {
+    for (size_t i = 0; i < report.size(); ++i) {
+        const auto& row = report[i];
+        const auto& baseline = kCalibrationBaselines[i];
+
+        REQUIRE(row.seasonYear == baseline.seasonYear);
         REQUIRE(row.model.sampleSize > 0);
         REQUIRE(row.model.homeAdvantage >= 0.0);
         REQUIRE(row.model.homeAdvantage <= 1.0);
+        REQUIRE(std::isfinite(row.model.pointDifferentialWeight));
         REQUIRE(row.model.brierScore >= 0.0);
         REQUIRE(row.model.logLoss >= 0.0);
+        REQUIRE(row.model.brierScore <= baseline.maxBrier);
+        REQUIRE(row.model.logLoss <= baseline.maxLogLoss);
     }
 }
 

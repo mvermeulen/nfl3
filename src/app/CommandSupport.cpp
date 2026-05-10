@@ -39,6 +39,23 @@ std::string requireField(const CsvParser::Row& row, const std::string& key) {
     return it->second;
 }
 
+std::map<std::string, double> pointDifferentialByTeam(const Season& season) {
+    std::map<std::string, double> pointDiff;
+    for (const auto& [abbr, team] : season.allTeams()) {
+        pointDiff[abbr] = 0.0;
+    }
+
+    for (const auto& game : season.allGames()) {
+        if (!game.isPlayed()) {
+            continue;
+        }
+        pointDiff[game.homeTeam()] += static_cast<double>(game.homeScore() - game.awayScore());
+        pointDiff[game.awayTeam()] += static_cast<double>(game.awayScore() - game.homeScore());
+    }
+
+    return pointDiff;
+}
+
 void loadTeams(Season& season, const std::string& teamsPath) {
     const auto teamsData = CsvParser::parse(teamsPath);
     for (const auto& row : teamsData) {
@@ -151,8 +168,8 @@ FittedModel fitModelFromHistoricalYear(int targetYear,
     double b1 = 0.0;
 
     const double invN = 1.0 / static_cast<double>(xs.size());
-    const double learningRate = 0.35;
-    const double l2 = 1e-4;
+        const double learningRate = 0.20;
+        const double l2 = 0.01;
     for (int iter = 0; iter < 2500; ++iter) {
         double grad0 = 0.0;
         double grad1 = 0.0;
@@ -173,10 +190,12 @@ FittedModel fitModelFromHistoricalYear(int targetYear,
     model.sampleSize = static_cast<int>(xs.size());
     model.homeAdvantage = clampProbability(sigmoid(b0));
     model.slopePrevWinPct = b1;
+    model.slopePrevPointDifferential = 0.0;
 
     // Internally, MonteCarlo applies strengthWeight to team-strength diff where
     // strength diff is approximately 0.4 * previous-win-pct diff.
     model.strengthWeight = std::max(0.0, b1 / 0.4);
+    model.pointDifferentialWeight = 0.0;
 
     double brier = 0.0;
     double logLoss = 0.0;
@@ -220,7 +239,9 @@ void persistFittedModel(const FittedModel& model,
     rows.push_back({{"coefficient", "sample_size"}, {"value", std::to_string(model.sampleSize)}});
     rows.push_back({{"coefficient", "home_advantage"}, {"value", std::to_string(model.homeAdvantage)}});
     rows.push_back({{"coefficient", "slope_prev_winpct"}, {"value", std::to_string(model.slopePrevWinPct)}});
+    rows.push_back({{"coefficient", "slope_prev_point_diff"}, {"value", std::to_string(model.slopePrevPointDifferential)}});
     rows.push_back({{"coefficient", "strength_weight"}, {"value", std::to_string(model.strengthWeight)}});
+    rows.push_back({{"coefficient", "point_diff_weight"}, {"value", std::to_string(model.pointDifferentialWeight)}});
     rows.push_back({{"coefficient", "brier_score"}, {"value", std::to_string(model.brierScore)}});
     rows.push_back({{"coefficient", "log_loss"}, {"value", std::to_string(model.logLoss)}});
 
@@ -243,6 +264,10 @@ bool loadFittedModel(const std::string& path, FittedModel& model) {
             model.strengthWeight = std::stod(value);
         } else if (key == "slope_prev_winpct") {
             model.slopePrevWinPct = std::stod(value);
+        } else if (key == "slope_prev_point_diff") {
+            model.slopePrevPointDifferential = std::stod(value);
+        } else if (key == "point_diff_weight") {
+            model.pointDifferentialWeight = std::stod(value);
         } else if (key == "brier_score") {
             model.brierScore = std::stod(value);
         } else if (key == "log_loss") {
@@ -256,7 +281,9 @@ bool loadFittedModel(const std::string& path, FittedModel& model) {
 }
 
 void applyModelToMonteCarlo(MonteCarlo& mc, const FittedModel& model) {
-    mc.setModelParameters(model.homeAdvantage, model.strengthWeight);
+    mc.setModelParameters(model.homeAdvantage,
+                          model.strengthWeight,
+                          model.pointDifferentialWeight);
 }
 
 } // namespace nfl3

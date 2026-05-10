@@ -222,6 +222,8 @@ double MonteCarlo::getWinProbability(const Team& homeTeam, const Team& awayTeam)
     // Get team strength factors
     double homeStrength = getTeamStrengthFactor(homeTeam);
     double awayStrength = getTeamStrengthFactor(awayTeam);
+    const double homePointDiff = homeTeam.pointDifferentialPerGame();
+    const double awayPointDiff = awayTeam.pointDifferentialPerGame();
 
     // Use a bounded logistic form so probability remains well-calibrated and
     // interpretable as the strength signal changes.
@@ -230,9 +232,12 @@ double MonteCarlo::getWinProbability(const Team& homeTeam, const Team& awayTeam)
     return sigmoid(score);
 }
 
-void MonteCarlo::setModelParameters(double homeAdvantage, double strengthWeight) {
+void MonteCarlo::setModelParameters(double homeAdvantage,
+                                    double strengthWeight,
+                                    double pointDifferentialWeight) {
     homeAdvantage_ = std::max(0.0, std::min(1.0, homeAdvantage));
     strengthWeight_ = std::max(0.0, strengthWeight);
+    pointDifferentialWeight_ = pointDifferentialWeight;
 }
 
 PlayoffOutcome MonteCarlo::simulateIteration(const Season& season) {
