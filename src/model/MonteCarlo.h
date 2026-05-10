@@ -14,6 +14,7 @@ struct PlayoffOutcome {
     std::map<std::string, int> playoffAppearances;  // team abbr -> count
     std::map<std::string, int> divisionWins;        // team abbr -> count
     std::map<std::string, int> wildcardWins;        // team abbr -> count
+    std::map<std::string, int> simulatedWins;       // team abbr -> summed final wins
 };
 
 /**

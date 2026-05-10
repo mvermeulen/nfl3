@@ -49,6 +49,22 @@ int inferScheduledGamesPerTeam(const Season& season, int fallback) {
     return maxGames > 0 ? maxGames : fallback;
 }
 
+std::map<std::string, int> inferScheduledGamesByTeam(const Season& season, int fallback) {
+    std::map<std::string, int> scheduleCounts;
+    for (const auto& game : season.allGames()) {
+        scheduleCounts[game.homeTeam()]++;
+        scheduleCounts[game.awayTeam()]++;
+    }
+
+    for (const auto& [abbr, team] : season.allTeams()) {
+        if (scheduleCounts.count(abbr) == 0 || scheduleCounts[abbr] <= 0) {
+            scheduleCounts[abbr] = fallback;
+        }
+    }
+
+    return scheduleCounts;
+}
+
 int wildcardSpotsPerConference(int seasonYear) {
     // NFL expanded from 2 to 3 wild cards per conference in 2020.
     if (seasonYear >= 2020) {
@@ -120,10 +136,11 @@ SimulationResults MonteCarlo::simulate(const Season& season,
     results.totalIterations = iterations;
 
     const int seasonYear = detectSeasonYear(season);
-    const int totalGamesPerTeam = inferScheduledGamesPerTeam(
+    const int totalGamesPerTeamFallback = inferScheduledGamesPerTeam(
         season,
         fallbackGamesPerTeamFromYear(seasonYear)
     );
+    const auto scheduledGamesByTeam = inferScheduledGamesByTeam(season, totalGamesPerTeamFallback);
     
     // Initialize all probabilities to 0
     for (const auto& [abbr, team] : season.allTeams()) {
@@ -148,6 +165,9 @@ SimulationResults MonteCarlo::simulate(const Season& season,
         for (const auto& [abbr, count] : outcome.wildcardWins) {
             aggregateOutcomes.wildcardWins[abbr] += count;
         }
+        for (const auto& [abbr, wins] : outcome.simulatedWins) {
+            aggregateOutcomes.simulatedWins[abbr] += wins;
+        }
     }
     
     // Convert counts to probabilities
@@ -171,9 +191,9 @@ SimulationResults MonteCarlo::simulate(const Season& season,
         }
         
         // Estimated end-of-season win percentage
-        const int remainingGames = std::max(0, totalGamesPerTeam - team.gamesPlayed());
-        const double estimatedWins = team.wins() + results.playoffProbability[abbr] * remainingGames;
-        results.teamWinProbability[abbr] = estimatedWins / static_cast<double>(totalGamesPerTeam);
+        const int scheduledGames = scheduledGamesByTeam.at(abbr);
+        const double avgFinalWins = static_cast<double>(aggregateOutcomes.simulatedWins[abbr]) / iterations;
+        results.teamWinProbability[abbr] = avgFinalWins / static_cast<double>(scheduledGames);
     }
     
     results.outcomes = aggregateOutcomes;
@@ -216,7 +236,15 @@ PlayoffOutcome MonteCarlo::simulateIteration(const Season& season) {
     simSeason.computeStandings();
     
     // Determine playoff teams
-    return determinePlayoffs(simSeason);
+    PlayoffOutcome outcome = determinePlayoffs(simSeason);
+
+    // Record final simulated wins so expected win percentage can be derived
+    // from actual simulated outcomes rather than a playoff-probability proxy.
+    for (const auto& [abbr, team] : simSeason.allTeams()) {
+        outcome.simulatedWins[abbr] = team.wins();
+    }
+
+    return outcome;
 }
 
 void MonteCarlo::simulateRemainingGames(Season& season) {

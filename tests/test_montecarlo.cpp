@@ -242,3 +242,32 @@ TEST_CASE("MonteCarlo impact analysis", "[MonteCarlo]") {
         }
     }
 }
+
+TEST_CASE("MonteCarlo expected win percentage uses simulated wins", "[MonteCarlo][regression]") {
+    MonteCarlo mc;
+    Season season;
+
+    season.addTeam(Team("KC", "Kansas City Chiefs", "AFC", "AFC West"));
+    season.addTeam(Team("DEN", "Denver Broncos", "AFC", "AFC West"));
+
+    // One remaining game. Both teams always make playoffs in this tiny league,
+    // so playoff probability is not a valid proxy for expected wins.
+    season.addGame(Game(1, "2026-09-10", "KC", "DEN", -1, -1, "scheduled"));
+    season.computeStandings();
+
+    const auto results = mc.simulate(season, 5000, 777);
+
+    const double kcPlayoff = results.playoffProbability.at("KC");
+    const double denPlayoff = results.playoffProbability.at("DEN");
+    REQUIRE(kcPlayoff == Approx(1.0));
+    REQUIRE(denPlayoff == Approx(1.0));
+
+    const double kcWinPct = results.teamWinProbability.at("KC");
+    const double denWinPct = results.teamWinProbability.at("DEN");
+
+    REQUIRE(kcWinPct > 0.50);
+    REQUIRE(kcWinPct < 0.65);
+    REQUIRE(denWinPct > 0.35);
+    REQUIRE(denWinPct < 0.50);
+    REQUIRE(kcWinPct + denWinPct == Approx(1.0).margin(0.03));
+}
