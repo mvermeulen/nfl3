@@ -163,7 +163,23 @@ private:
      * @param season Completed season
      * @return PlayoffOutcome with seeding information
      */
-    PlayoffOutcome determinePlayoffs(const Season& season);
+    PlayoffOutcome determinePlayoffs(const Season& season) const;
+
+    /**
+     * Fast iteration variant: accepts pre-computed per-game win probabilities
+     * and an explicit RNG reference so it is safe to call from multiple threads.
+     */
+    PlayoffOutcome simulateIterationFast(const Season& season,
+                                         const std::vector<double>& winProbs,
+                                         std::mt19937& rng) const;
+
+    /**
+     * Simulate remaining games using pre-computed win probabilities and a
+     * caller-supplied RNG (thread-safe equivalent of simulateRemainingGames).
+     */
+    void simulateRemainingGamesFast(Season& season,
+                                     const std::vector<double>& winProbs,
+                                     std::mt19937& rng) const;
 
     /**
      * Return next unplayed week number, or -1 if all games are final.

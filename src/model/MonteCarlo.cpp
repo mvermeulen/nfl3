@@ -4,6 +4,11 @@
 #include <algorithm>
 #include <exception>
 #include <map>
+#include <unordered_set>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace {
 
@@ -203,13 +208,6 @@ ImpactAnalysisResults MonteCarlo::analyzeImpact(const Season& season,
 SimulationResults MonteCarlo::simulate(const Season& season, 
                                        int iterations,
                                        unsigned int seed) {
-    // Initialize random number generator
-    if (seed == 0) {
-        rng_.seed(std::random_device{}());
-    } else {
-        rng_.seed(seed);
-    }
-    
     SimulationResults results;
     results.totalIterations = iterations;
 
@@ -227,48 +225,94 @@ SimulationResults MonteCarlo::simulate(const Season& season,
         results.wildcardProbability[abbr] = 0.0;
         results.teamWinProbability[abbr] = 0.0;
     }
-    
-    // Run simulations
-    PlayoffOutcome aggregateOutcomes;
-    for (int i = 0; i < iterations; ++i) {
-        PlayoffOutcome outcome = simulateIteration(season);
-        
-        // Aggregate outcomes
-        for (const auto& [abbr, count] : outcome.playoffAppearances) {
-            aggregateOutcomes.playoffAppearances[abbr] += count;
-        }
-        for (const auto& [abbr, count] : outcome.divisionWins) {
-            aggregateOutcomes.divisionWins[abbr] += count;
-        }
-        for (const auto& [abbr, count] : outcome.wildcardWins) {
-            aggregateOutcomes.wildcardWins[abbr] += count;
-        }
-        for (const auto& [abbr, wins] : outcome.simulatedWins) {
-            aggregateOutcomes.simulatedWins[abbr] += wins;
+
+    // Pre-compute win probabilities for all unplayed games (fixed for the whole
+    // simulation since team strengths are based on current season state).
+    const auto& allGames = season.allGames();
+    std::vector<double> gameWinProbs(allGames.size(), -1.0);
+    for (size_t gi = 0; gi < allGames.size(); ++gi) {
+        if (!allGames[gi].isPlayed()) {
+            const Team* h = season.getTeam(allGames[gi].homeTeam());
+            const Team* a = season.getTeam(allGames[gi].awayTeam());
+            if (h && a) {
+                gameWinProbs[gi] = getWinProbability(*h, *a);
+            }
         }
     }
+
+    // Run simulations — parallelized with OpenMP when available.
+    PlayoffOutcome aggregateOutcomes;
+
+#ifdef _OPENMP
+    #pragma omp parallel
+    {
+        const int tid = omp_get_thread_num();
+        std::mt19937 threadRng;
+        if (seed == 0) {
+            std::random_device rd;
+            threadRng.seed(rd() ^ (static_cast<unsigned>(tid) * 2654435761u));
+        } else {
+            threadRng.seed(seed + static_cast<unsigned>(tid));
+        }
+
+        PlayoffOutcome localOutcomes;
+
+        #pragma omp for schedule(static)
+        for (int i = 0; i < iterations; ++i) {
+            PlayoffOutcome outcome = simulateIterationFast(season, gameWinProbs, threadRng);
+            for (const auto& [abbr, count] : outcome.playoffAppearances)
+                localOutcomes.playoffAppearances[abbr] += count;
+            for (const auto& [abbr, count] : outcome.divisionWins)
+                localOutcomes.divisionWins[abbr] += count;
+            for (const auto& [abbr, count] : outcome.wildcardWins)
+                localOutcomes.wildcardWins[abbr] += count;
+            for (const auto& [abbr, wins] : outcome.simulatedWins)
+                localOutcomes.simulatedWins[abbr] += wins;
+        }
+
+        #pragma omp critical
+        {
+            for (const auto& [abbr, count] : localOutcomes.playoffAppearances)
+                aggregateOutcomes.playoffAppearances[abbr] += count;
+            for (const auto& [abbr, count] : localOutcomes.divisionWins)
+                aggregateOutcomes.divisionWins[abbr] += count;
+            for (const auto& [abbr, count] : localOutcomes.wildcardWins)
+                aggregateOutcomes.wildcardWins[abbr] += count;
+            for (const auto& [abbr, wins] : localOutcomes.simulatedWins)
+                aggregateOutcomes.simulatedWins[abbr] += wins;
+        }
+    }
+#else
+    // Initialize the member RNG (single-threaded fallback).
+    if (seed == 0) {
+        rng_.seed(std::random_device{}());
+    } else {
+        rng_.seed(seed);
+    }
+    for (int i = 0; i < iterations; ++i) {
+        PlayoffOutcome outcome = simulateIterationFast(season, gameWinProbs, rng_);
+        for (const auto& [abbr, count] : outcome.playoffAppearances)
+            aggregateOutcomes.playoffAppearances[abbr] += count;
+        for (const auto& [abbr, count] : outcome.divisionWins)
+            aggregateOutcomes.divisionWins[abbr] += count;
+        for (const auto& [abbr, count] : outcome.wildcardWins)
+            aggregateOutcomes.wildcardWins[abbr] += count;
+        for (const auto& [abbr, wins] : outcome.simulatedWins)
+            aggregateOutcomes.simulatedWins[abbr] += wins;
+    }
+#endif
     
     // Convert counts to probabilities
     for (const auto& [abbr, team] : season.allTeams()) {
-        // Playoff probability
-        if (aggregateOutcomes.playoffAppearances.count(abbr)) {
+        if (aggregateOutcomes.playoffAppearances.count(abbr))
             results.playoffProbability[abbr] = 
                 static_cast<double>(aggregateOutcomes.playoffAppearances[abbr]) / iterations;
-        }
-        
-        // Division winner probability
-        if (aggregateOutcomes.divisionWins.count(abbr)) {
+        if (aggregateOutcomes.divisionWins.count(abbr))
             results.divisionWinProbability[abbr] = 
                 static_cast<double>(aggregateOutcomes.divisionWins[abbr]) / iterations;
-        }
-        
-        // Wild card probability
-        if (aggregateOutcomes.wildcardWins.count(abbr)) {
+        if (aggregateOutcomes.wildcardWins.count(abbr))
             results.wildcardProbability[abbr] = 
                 static_cast<double>(aggregateOutcomes.wildcardWins[abbr]) / iterations;
-        }
-        
-        // Estimated end-of-season win percentage
         const int scheduledGames = scheduledGamesByTeam.at(abbr);
         const double avgFinalWins = static_cast<double>(aggregateOutcomes.simulatedWins[abbr]) / iterations;
         results.teamWinProbability[abbr] = avgFinalWins / static_cast<double>(scheduledGames);
@@ -322,6 +366,19 @@ PlayoffOutcome MonteCarlo::simulateIteration(const Season& season) {
     return outcome;
 }
 
+PlayoffOutcome MonteCarlo::simulateIterationFast(const Season& season,
+                                                  const std::vector<double>& winProbs,
+                                                  std::mt19937& rng) const {
+    Season simSeason = season;
+    simulateRemainingGamesFast(simSeason, winProbs, rng);
+    simSeason.computeStandings();
+    PlayoffOutcome outcome = determinePlayoffs(simSeason);
+    for (const auto& [abbr, team] : simSeason.allTeams()) {
+        outcome.simulatedWins[abbr] = team.wins();
+    }
+    return outcome;
+}
+
 void MonteCarlo::simulateRemainingGames(Season& season) {
     std::uniform_real_distribution<> dist(0.0, 1.0);
     
@@ -368,7 +425,38 @@ void MonteCarlo::simulateRemainingGames(Season& season) {
     season.replaceGames(updatedGames);
 }
 
-PlayoffOutcome MonteCarlo::determinePlayoffs(const Season& season) {
+void MonteCarlo::simulateRemainingGamesFast(Season& season,
+                                             const std::vector<double>& winProbs,
+                                             std::mt19937& rng) const {
+    std::uniform_real_distribution<> dist(0.0, 1.0);
+    const auto& games = season.allGames();
+    std::vector<Game> updatedGames;
+    updatedGames.reserve(games.size());
+
+    for (size_t gi = 0; gi < games.size(); ++gi) {
+        const auto& game = games[gi];
+        if (!game.isPlayed() && winProbs[gi] >= 0.0) {
+            const double roll = dist(rng);
+            int homeScore, awayScore;
+            if (roll < winProbs[gi]) {
+                homeScore = 21 + static_cast<int>(rng() % 23);
+                awayScore = 3 + static_cast<int>(rng() % 18);
+            } else {
+                homeScore = 3 + static_cast<int>(rng() % 18);
+                awayScore = 21 + static_cast<int>(rng() % 23);
+            }
+            updatedGames.emplace_back(game.week(), game.date(),
+                                      game.homeTeam(), game.awayTeam(),
+                                      homeScore, awayScore, "final");
+        } else {
+            updatedGames.push_back(game);
+        }
+    }
+
+    season.replaceGames(updatedGames);
+}
+
+PlayoffOutcome MonteCarlo::determinePlayoffs(const Season& season) const {
     PlayoffOutcome outcome;
     const int seasonYear = detectSeasonYear(season);
     
@@ -377,12 +465,14 @@ PlayoffOutcome MonteCarlo::determinePlayoffs(const Season& season) {
     
     // Get division winners (first place in each division)
     std::vector<std::string> playoffTeams;
+    std::unordered_set<std::string> playoffTeamSet;
     
     for (const auto& division : divisions) {
         auto divStandings = season.teamsByDivision(division);
         if (!divStandings.empty()) {
             auto* divWinner = divStandings[0];
             playoffTeams.push_back(divWinner->abbreviation());
+            playoffTeamSet.insert(divWinner->abbreviation());
             outcome.divisionWins[divWinner->abbreviation()]++;
         }
     }
@@ -405,11 +495,9 @@ PlayoffOutcome MonteCarlo::determinePlayoffs(const Season& season) {
         
         for (const auto* team : confStandings) {
             // Check if already a division winner
-            auto it = std::find(playoffTeams.begin(), playoffTeams.end(), 
-                               team->abbreviation());
-            
-            if (it == playoffTeams.end() && wildcardAdded < wildcardSpots) {
+            if (playoffTeamSet.count(team->abbreviation()) == 0 && wildcardAdded < wildcardSpots) {
                 playoffTeams.push_back(team->abbreviation());
+                playoffTeamSet.insert(team->abbreviation());
                 outcome.wildcardWins[team->abbreviation()]++;
                 wildcardAdded++;
             }

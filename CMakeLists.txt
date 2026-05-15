@@ -7,6 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# OpenMP for parallel Monte Carlo simulation
+find_package(OpenMP)
+
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/src)
 include_directories(${CMAKE_SOURCE_DIR}/tests/include)
@@ -24,6 +27,10 @@ add_executable(nfl3
     src/output/AsciiPrinter.cpp
     src/output/WebServer.cpp
 )
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(nfl3 OpenMP::OpenMP_CXX)
+endif()
 
 # Test executable
 enable_testing()
@@ -52,5 +59,9 @@ add_executable(nfl3_tests
 )
 
 target_compile_definitions(nfl3_tests PRIVATE NFL3_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(nfl3_tests OpenMP::OpenMP_CXX)
+endif()
 
 add_test(NAME nfl3_tests COMMAND nfl3_tests)
