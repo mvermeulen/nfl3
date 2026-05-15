@@ -317,6 +317,7 @@ std::string WebServer::renderStandingsHtml() const {
 std::string WebServer::renderSimulationHtml(int iterations) const {
     MonteCarlo mc;
     mc.setModelParameters(homeAdvantage_, strengthWeight_);
+    mc.loadHistoricalStrengths(season_, "data/historical");
     Season current = season_;
     current.computeStandings();
     const auto sim = mc.simulate(current, iterations, 12345);
@@ -355,6 +356,7 @@ std::string WebServer::renderSimulationHtml(int iterations) const {
 std::string WebServer::renderImpactHtml(int iterations) const {
     MonteCarlo mc;
     mc.setModelParameters(homeAdvantage_, strengthWeight_);
+    mc.loadHistoricalStrengths(season_, "data/historical");
     Season current = season_;
     current.computeStandings();
     const auto impact = mc.analyzeImpact(current, iterations, 12345);
@@ -423,6 +425,7 @@ std::string WebServer::standingsJson() const {
 std::string WebServer::simulationJson(int iterations) const {
     MonteCarlo mc;
     mc.setModelParameters(homeAdvantage_, strengthWeight_);
+    mc.loadHistoricalStrengths(season_, "data/historical");
     Season current = season_;
     current.computeStandings();
     const auto sim = mc.simulate(current, iterations, 12345);
@@ -447,6 +450,7 @@ std::string WebServer::simulationJson(int iterations) const {
 std::string WebServer::impactJson(int iterations) const {
     MonteCarlo mc;
     mc.setModelParameters(homeAdvantage_, strengthWeight_);
+    mc.loadHistoricalStrengths(season_, "data/historical");
     Season current = season_;
     current.computeStandings();
     const auto impact = mc.analyzeImpact(current, iterations, 12345);

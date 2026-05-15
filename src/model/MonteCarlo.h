@@ -120,11 +120,23 @@ public:
                             double strengthWeight,
                             double pointDifferentialWeight = 0.0);
 
+    /**
+     * Load historical team win percentages from the prior season.
+     * Automatically detects the current season year and loads prior year data.
+     * 
+     * @param season The current season (used to detect year)
+     * @param historicalDataDir Path to historical data directory (e.g., "data/historical")
+     * @return true if historical data was loaded successfully, false otherwise
+     */
+    bool loadHistoricalStrengths(const Season& season, 
+                                 const std::string& historicalDataDir = "data/historical");
+
 private:
     mutable std::mt19937 rng_;  // Random number generator
     double homeAdvantage_ = 0.57;
     double strengthWeight_ = 0.15;
     double pointDifferentialWeight_ = 0.0;
+    std::map<std::string, double> priorYearStrengths_;  // Historical team strength factors
     
     /**
      * Simulate a single iteration of the season.

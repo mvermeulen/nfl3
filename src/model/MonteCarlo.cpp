@@ -1,4 +1,5 @@
 #include "MonteCarlo.h"
+#include "util/CsvParser.h"
 #include <cmath>
 #include <algorithm>
 #include <exception>
@@ -92,6 +93,65 @@ double sigmoid(double x) {
 }
 
 } // namespace
+
+bool MonteCarlo::loadHistoricalStrengths(const Season& season,
+                                         const std::string& historicalDataDir) {
+    // Detect current season year
+    int currentSeasonYear = detectSeasonYear(season);
+    if (currentSeasonYear < 0) {
+        return false;  // Could not detect season year
+    }
+
+    // Determine prior year
+    int priorYear = currentSeasonYear - 1;
+    if (priorYear < 1999) {
+        return false;  // No data available for this year
+    }
+
+    // Construct path to historical data file
+    std::string historicalPath = historicalDataDir + "/" + std::to_string(priorYear) + ".csv";
+
+    try {
+        // Load historical season data
+        Season historicalSeason;
+        for (const auto& [abbr, team] : season.allTeams()) {
+            historicalSeason.addTeam(team);
+        }
+
+        // Parse historical games
+        const auto historicalData = CsvParser::parse(historicalPath);
+        for (const auto& row : historicalData) {
+            try {
+                Game game(
+                    std::stoi(row.at("week")),
+                    row.at("date"),
+                    row.at("home_team"),
+                    row.at("away_team"),
+                    std::stoi(row.at("home_score")),
+                    std::stoi(row.at("away_score")),
+                    row.at("status"));
+                historicalSeason.addGame(game);
+            } catch (...) {
+                // Skip malformed rows
+                continue;
+            }
+        }
+
+        // Compute standings to tally wins
+        historicalSeason.computeStandings();
+
+        // Compute win percentages and convert to strength factors
+        for (const auto& [abbr, team] : historicalSeason.allTeams()) {
+            double winPct = team.winPercentage();
+            double strengthFactor = 0.5 + (winPct - 0.5) * 0.4;
+            priorYearStrengths_[abbr] = strengthFactor;
+        }
+
+        return true;
+    } catch (const std::exception&) {
+        return false;  // Failed to load historical data
+    }
+}
 
 ImpactAnalysisResults MonteCarlo::analyzeImpact(const Season& season,
                                                 int iterations,
@@ -365,21 +425,32 @@ PlayoffOutcome MonteCarlo::determinePlayoffs(const Season& season) {
 }
 
 double MonteCarlo::getTeamStrengthFactor(const Team& team) const {
-    // Simple strength factor based on win percentage
-    // Starting from 0.5 (average), adjust based on record
+    // Check if we have historical strength data for this team
+    auto histIt = priorYearStrengths_.find(team.abbreviation());
+    if (histIt != priorYearStrengths_.end()) {
+        // Use historical data, blended with current season performance
+        double historicalStrength = histIt->second;
+        double currentWinPct = team.winPercentage();
+        int gamesPlayed = team.gamesPlayed();
+        
+        // Gradually shift from historical strength to current season performance
+        // as more games are played (ramp up to full weight after ~4 games)
+        double currentWeight = std::min(1.0, gamesPlayed / 4.0);
+        
+        // Current season strength factor based on win percentage
+        double currentStrength = 0.5 + (currentWinPct - 0.5) * 0.4;
+        
+        // Blend historical and current season
+        return historicalStrength * (1.0 - currentWeight) + currentStrength * currentWeight;
+    }
     
+    // Fallback to original behavior if no historical data
     double winPct = team.winPercentage();
-    
-    // Map win percentage to strength factor
-    // 0% record = 0.3 strength (below average)
-    // 50% record = 0.5 strength (average)
-    // 100% record = 0.7 strength (above average)
     double strengthFactor = 0.5 + (winPct - 0.5) * 0.4;
     
     // Discount early-season records (fewer games = less signal)
     int gamesPlayed = team.gamesPlayed();
     if (gamesPlayed < 4) {
-        // Regress toward 0.5 (no information) for very few games
         double confidence = gamesPlayed / 4.0;
         strengthFactor = 0.5 + (strengthFactor - 0.5) * confidence;
     }

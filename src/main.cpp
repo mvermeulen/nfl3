@@ -142,6 +142,12 @@ int main(int argc, char* argv[]) {
             season.computeStandings();
             MonteCarlo mc;
             nfl3::applyModelToMonteCarlo(mc, model);
+            
+            // Load historical team strengths from prior season
+            if (mc.loadHistoricalStrengths(season, "data/historical")) {
+                std::cout << "Loaded historical team strengths." << std::endl;
+            }
+            
             auto results = mc.simulate(season, iterations, 12345);
 
             std::vector<std::pair<std::string, double>> ordered;
@@ -174,6 +180,12 @@ int main(int argc, char* argv[]) {
             season.computeStandings();
             MonteCarlo mc;
             nfl3::applyModelToMonteCarlo(mc, model);
+            
+            // Load historical team strengths from prior season
+            if (mc.loadHistoricalStrengths(season, "data/historical")) {
+                std::cout << "Loaded historical team strengths." << std::endl;
+            }
+            
             auto impact = mc.analyzeImpact(season, iterations, 12345);
 
             if (impact.week < 0 || impact.gameImpacts.empty()) {

@@ -1,0 +1,10 @@
+coefficient,value
+target_year,2025
+sample_size,272
+home_advantage,0.539702
+slope_prev_winpct,0.802990
+slope_prev_point_diff,0.000000
+strength_weight,2.007474
+point_diff_weight,0.000000
+brier_score,0.241199
+log_loss,0.677119
