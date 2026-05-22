@@ -147,7 +147,7 @@ TEST_CASE("WebServer API endpoints return expected payloads", "[web]") {
         const auto response = server.handleForTests(
             "POST",
             "/api/update-result",
-            "week=1&home_team=KC&away_team=LAC&home_score=30&away_score=10");
+            "week=1&home_team=KC&away_team=DEN&home_score=30&away_score=10");
 
         REQUIRE(response.statusCode == 200);
         REQUIRE(response.body.find("\"ok\":true") != std::string::npos);
@@ -155,7 +155,7 @@ TEST_CASE("WebServer API endpoints return expected payloads", "[web]") {
         const auto rows = CsvParser::parse(tempSchedule.string());
         bool found = false;
         for (const auto& row : rows) {
-            if (row.at("week") == "1" && row.at("home_team") == "KC" && row.at("away_team") == "LAC") {
+            if (row.at("week") == "1" && row.at("home_team") == "KC" && row.at("away_team") == "DEN") {
                 found = true;
                 REQUIRE(row.at("home_score") == "30");
                 REQUIRE(row.at("away_score") == "10");
