@@ -20,6 +20,7 @@ cmake --build build
 ./build/nfl3 calibration-report 2019 2025
 ./build/nfl3 backfit-model 2025
 ./build/nfl3 web 8080
+./build/nfl3 fetch-live [week|all]
 ```
 
 Notes:
@@ -30,17 +31,22 @@ Notes:
 - `backfit-model <YEAR>` fits a lightweight logistic model using `data/historical/<YEAR-1>.csv` (team strength proxy) and `data/historical/<YEAR>.csv` (outcomes), then saves coefficients to `data/model_coefficients.csv`.
 - `simulate`, `impact`, and `web` automatically use `data/model_coefficients.csv` when present.
 - `web` serves local pages at `http://127.0.0.1:<port>`.
+- `fetch-live [week|all]` fetches live score updates from ESPN's scoreboard API for a specific week (1-18) or all weeks, and updates `data/schedule.csv` in-place.
 
 ## Web Endpoints
 
 - `GET /` and `GET /standings`: standings dashboard
 - `GET /simulation`: simulation dashboard (`?iterations=<N>` optional)
 - `GET /impact`: impact dashboard (`?iterations=<N>` optional)
+- `GET /sandbox`: simulation dashboard sandbox for what-if scenarios
 - `GET /api/standings`: standings JSON
-- `GET /api/simulation?iterations=<N>`: simulation JSON
+- `GET /api/games`: raw games list JSON
+- `GET /api/simulation` & `POST /api/simulation`: simulation JSON (`iterations=<N>` and `locks=<LOCKS>` optional)
+  - `locks` accepts a comma-separated list of forced outcomes: `week:home_team:away_team:winner` (e.g. `18:BUF:NE:home`) to simulate custom scenarios.
 - `GET /api/impact?iterations=<N>`: impact JSON
 - `POST /api/update-result`: apply a game result and persist to `data/schedule.csv`
 	- Body (x-www-form-urlencoded): `week`, `home_team`, `away_team`, `home_score`, `away_score`
+- `POST /api/fetch-live`: trigger live score sync from ESPN scoreboard API for all weeks and reload schedule in-place
 
 See [INVESTIGATION.md](INVESTIGATION.md) for project goals and architecture.
 

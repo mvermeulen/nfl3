@@ -1,7 +1,7 @@
 # nfl3 — Investigation Report
 
 **Date:** May 10, 2026  
-**Status:** Implemented v1 commands (status/simulate/impact/load-schedule/web/backfit-model)
+**Status:** Implemented all core features and commands (status, simulate, impact, load-schedule, calibration-report, backfit-model, web, and fetch-live)
 
 ---
 
@@ -113,7 +113,7 @@ https://github.com/nflverse/nfldata/raw/master/data/games.csv
 The [ESPN unofficial JSON API](https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard) is suitable for **in-season live score updates** to automate `schedule.csv` result ingestion during the season.
 
 - No API key required; returns JSON.
-- Use [nlohmann/json](https://github.com/nlohmann/json) to parse in C++.
+- Implemented via a lightweight Python script wrapper (`scripts/fetch_live_scores.py`) invoked by the C++ binary (`./nfl3 fetch-live`) or the Web UI (`POST /api/fetch-live`). This keeps dependencies simple and avoids compiling a C++ network stack.
 
 ### 4.3 Historical Data Caching
 
@@ -278,26 +278,26 @@ The program is a command-line tool with a simple invocation pattern:
 5. Use `./nfl3 web 8080` to launch interactive dashboard for continuous monitoring (includes impact analysis page).
 6. Use `/api/update-result` endpoint (via web form) to log new game results real-time.
 
-**What-if scenarios (future enhancement):**
-- Edit `data/schedule.csv` hypothetically (change a team's remaining opponents or scores).
-- Re-run simulation to see impact on playoff probability.
+**What-if scenarios (implemented):**
+- Lock specific unplayed games to hypothetical home or away wins directly in the web server sandbox (`GET /sandbox` / `/api/simulation?locks=...`).
+- Re-run simulations to immediately inspect the updated playoff probabilities for all teams.
 
 ---
 
 ## 7. Milestones
 
-| # | Milestone | Description |
-|---|-----------|-------------|
-| 1 | Data layer | `teams.csv` + `schedule.csv` populated; CSV parser implemented |
-| 2 | Standings | Compute records; basic ASCII standings output |
-| 3 | Tiebreakers | Full NFL tiebreaker rules; exact playoff seeding |
-| 4 | Unit tests | Unit tests for CSV parser, standings computation, and tiebreaker rule chain |
-| 5 | Simulation | Monte Carlo engine; probabilistic playoff output |
-| 6 | Web app | Embedded HTTP server serving HTML standings/simulation results |
-| 7 | Impact analysis | For each game in the coming week, measure how much that single game affects playoff probabilities for the teams involved; display in ASCII and web UI |
-| 8 | Data ingestion | Automated fetch from web source to update `schedule.csv` |
-| 9 | End-to-end tests | Replay past seasons from nflverse historical data and verify computed playoff seedings match actual seedings; validate simulation output distributions against known outcomes |
-| 10 | Playoff simulation | Postseason bracket simulation and Super Bowl probability (future) |
+| # | Milestone | Description | Status |
+|---|-----------|-------------|--------|
+| 1 | Data layer | `teams.csv` + `schedule.csv` populated; CSV parser implemented | **Complete** |
+| 2 | Standings | Compute records; basic ASCII standings output | **Complete** |
+| 3 | Tiebreakers | Full NFL tiebreaker rules; exact playoff seeding | **Complete** |
+| 4 | Unit tests | Unit tests for CSV parser, standings computation, and tiebreaker rule chain | **Complete** |
+| 5 | Simulation | Monte Carlo engine; probabilistic playoff output | **Complete** |
+| 6 | Web app | Embedded HTTP server serving HTML standings/simulation results | **Complete** |
+| 7 | Impact analysis | Measure game-by-game playoff probability deltas | **Complete** |
+| 8 | Data ingestion | Ingest live regular-season scores via ESPN scoreboard API | **Complete** |
+| 9 | End-to-end tests | Replay historical seasons and verify computed playoff seedings | **Complete** |
+| 10| Playoff simulation | Postseason bracket simulation and Super Bowl probability | **Complete** |
 
 ---
 
@@ -349,5 +349,5 @@ While no explicit performance targets are set, instrumentation is needed to trac
 - Which web source will be the primary data feed? **Resolved: nflverse for historical/schedule data; ESPN unofficial API for live in-season updates.**
 - Should the web app be an embedded C++ HTTP server, or generate static HTML files? **Resolved: embedded C++ HTTP server (cpp-httplib).**
 - Win probability model for simulation: ~~pure 50/50~~ fit a basic probabilistic model to historical data (home field advantage, prior-season team strength); not full Elo.
-- Should playoff simulation include postseason bracket simulation, or only regular-season outcome probabilities? **Deferred: postseason bracket simulation is a future item; not in scope for initial design.**
+- Should playoff simulation include postseason bracket simulation, or only regular-season outcome probabilities? **Resolved: Full postseason bracket and Super Bowl probabilities are simulated in the Monte Carlo engine (Phase 2).**
 - License / open-source intent? **Resolved: MIT License.**
