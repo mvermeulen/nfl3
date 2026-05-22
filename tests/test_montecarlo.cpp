@@ -271,3 +271,68 @@ TEST_CASE("MonteCarlo expected win percentage uses simulated wins", "[MonteCarlo
     REQUIRE(denWinPct < 0.50);
     REQUIRE(kcWinPct + denWinPct == Approx(1.0).margin(0.03));
 }
+
+TEST_CASE("MonteCarlo postseason simulation probability invariants", "[MonteCarlo][playoffs]") {
+    MonteCarlo mc;
+    Season season;
+
+    // Set up a full league structure with 7 AFC and 7 NFC teams to satisfy all 7 seeds per conference
+    season.addTeam(Team("KC", "Kansas City Chiefs", "AFC", "AFC West"));
+    season.addTeam(Team("LV", "Las Vegas Raiders", "AFC", "AFC West"));
+    season.addTeam(Team("LAC", "LA Chargers", "AFC", "AFC West"));
+    season.addTeam(Team("DEN", "Denver Broncos", "AFC", "AFC West"));
+    season.addTeam(Team("NE", "New England Patriots", "AFC", "AFC East"));
+    season.addTeam(Team("BUF", "Buffalo Bills", "AFC", "AFC East"));
+    season.addTeam(Team("NYJ", "New York Jets", "AFC", "AFC East"));
+
+    season.addTeam(Team("PHI", "Philadelphia Eagles", "NFC", "NFC East"));
+    season.addTeam(Team("DAL", "Dallas Cowboys", "NFC", "NFC East"));
+    season.addTeam(Team("NYG", "New York Giants", "NFC", "NFC East"));
+    season.addTeam(Team("WAS", "Washington Commanders", "NFC", "NFC East"));
+    season.addTeam(Team("SF", "San Francisco 49ers", "NFC", "NFC West"));
+    season.addTeam(Team("SEA", "Seattle Seahawks", "NFC", "NFC West"));
+    season.addTeam(Team("LAR", "LA Rams", "NFC", "NFC West"));
+
+    // Add scheduled games so standings can be computed and simulated
+    // We'll add some mock games to make sure teams have games to play
+    season.addGame(Game(1, "2026-09-10", "KC", "LV", -1, -1, "scheduled"));
+    season.addGame(Game(1, "2026-09-10", "LAC", "DEN", -1, -1, "scheduled"));
+    season.addGame(Game(1, "2026-09-10", "NE", "BUF", -1, -1, "scheduled"));
+    season.addGame(Game(1, "2026-09-10", "PHI", "DAL", -1, -1, "scheduled"));
+    season.addGame(Game(1, "2026-09-10", "NYG", "WAS", -1, -1, "scheduled"));
+    season.addGame(Game(1, "2026-09-10", "SF", "SEA", -1, -1, "scheduled"));
+
+    season.computeStandings();
+
+    const auto results = mc.simulate(season, 1000, 42);
+
+    // Sum probabilities across all 14 teams
+    double totalDivisional = 0.0;
+    double totalConfChamp = 0.0;
+    double totalSuperBowl = 0.0;
+    double totalWinSuperBowl = 0.0;
+
+    for (const auto& [abbr, prob] : results.makeDivisionalProbability) {
+        totalDivisional += prob;
+    }
+    for (const auto& [abbr, prob] : results.makeConfChampionshipProbability) {
+        totalConfChamp += prob;
+    }
+    for (const auto& [abbr, prob] : results.makeSuperBowlProbability) {
+        totalSuperBowl += prob;
+    }
+    for (const auto& [abbr, prob] : results.winSuperBowlProbability) {
+        totalWinSuperBowl += prob;
+    }
+
+    // In a league with full conference play:
+    // - 8 teams reach the Divisional round (4 per conference) -> sum of divisional prob should be exactly 8.0
+    // - 4 teams reach the Conf Championship (2 per conference) -> sum of conf championship prob should be exactly 4.0
+    // - 2 teams reach the Super Bowl (1 per conference) -> sum of Super Bowl app prob should be exactly 2.0
+    // - 1 team wins the Super Bowl -> sum of Super Bowl win prob should be exactly 1.0
+    REQUIRE(totalDivisional == Approx(8.0));
+    REQUIRE(totalConfChamp == Approx(4.0));
+    REQUIRE(totalSuperBowl == Approx(2.0));
+    REQUIRE(totalWinSuperBowl == Approx(1.0));
+}
+

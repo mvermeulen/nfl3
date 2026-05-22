@@ -268,6 +268,14 @@ SimulationResults MonteCarlo::simulate(const Season& season,
                 localOutcomes.wildcardWins[abbr] += count;
             for (const auto& [abbr, wins] : outcome.simulatedWins)
                 localOutcomes.simulatedWins[abbr] += wins;
+            for (const auto& [abbr, count] : outcome.makeDivisional)
+                localOutcomes.makeDivisional[abbr] += count;
+            for (const auto& [abbr, count] : outcome.makeConfChampionship)
+                localOutcomes.makeConfChampionship[abbr] += count;
+            for (const auto& [abbr, count] : outcome.makeSuperBowl)
+                localOutcomes.makeSuperBowl[abbr] += count;
+            for (const auto& [abbr, count] : outcome.winSuperBowl)
+                localOutcomes.winSuperBowl[abbr] += count;
         }
 
         #pragma omp critical
@@ -280,6 +288,14 @@ SimulationResults MonteCarlo::simulate(const Season& season,
                 aggregateOutcomes.wildcardWins[abbr] += count;
             for (const auto& [abbr, wins] : localOutcomes.simulatedWins)
                 aggregateOutcomes.simulatedWins[abbr] += wins;
+            for (const auto& [abbr, count] : localOutcomes.makeDivisional)
+                aggregateOutcomes.makeDivisional[abbr] += count;
+            for (const auto& [abbr, count] : localOutcomes.makeConfChampionship)
+                aggregateOutcomes.makeConfChampionship[abbr] += count;
+            for (const auto& [abbr, count] : localOutcomes.makeSuperBowl)
+                aggregateOutcomes.makeSuperBowl[abbr] += count;
+            for (const auto& [abbr, count] : localOutcomes.winSuperBowl)
+                aggregateOutcomes.winSuperBowl[abbr] += count;
         }
     }
 #else
@@ -299,6 +315,14 @@ SimulationResults MonteCarlo::simulate(const Season& season,
             aggregateOutcomes.wildcardWins[abbr] += count;
         for (const auto& [abbr, wins] : outcome.simulatedWins)
             aggregateOutcomes.simulatedWins[abbr] += wins;
+        for (const auto& [abbr, count] : outcome.makeDivisional)
+            aggregateOutcomes.makeDivisional[abbr] += count;
+        for (const auto& [abbr, count] : outcome.makeConfChampionship)
+            aggregateOutcomes.makeConfChampionship[abbr] += count;
+        for (const auto& [abbr, count] : outcome.makeSuperBowl)
+            aggregateOutcomes.makeSuperBowl[abbr] += count;
+        for (const auto& [abbr, count] : outcome.winSuperBowl)
+            aggregateOutcomes.winSuperBowl[abbr] += count;
     }
 #endif
     
@@ -313,6 +337,31 @@ SimulationResults MonteCarlo::simulate(const Season& season,
         if (aggregateOutcomes.wildcardWins.count(abbr))
             results.wildcardProbability[abbr] = 
                 static_cast<double>(aggregateOutcomes.wildcardWins[abbr]) / iterations;
+                
+        if (aggregateOutcomes.makeDivisional.count(abbr))
+            results.makeDivisionalProbability[abbr] = 
+                static_cast<double>(aggregateOutcomes.makeDivisional[abbr]) / iterations;
+        else
+            results.makeDivisionalProbability[abbr] = 0.0;
+
+        if (aggregateOutcomes.makeConfChampionship.count(abbr))
+            results.makeConfChampionshipProbability[abbr] = 
+                static_cast<double>(aggregateOutcomes.makeConfChampionship[abbr]) / iterations;
+        else
+            results.makeConfChampionshipProbability[abbr] = 0.0;
+
+        if (aggregateOutcomes.makeSuperBowl.count(abbr))
+            results.makeSuperBowlProbability[abbr] = 
+                static_cast<double>(aggregateOutcomes.makeSuperBowl[abbr]) / iterations;
+        else
+            results.makeSuperBowlProbability[abbr] = 0.0;
+
+        if (aggregateOutcomes.winSuperBowl.count(abbr))
+            results.winSuperBowlProbability[abbr] = 
+                static_cast<double>(aggregateOutcomes.winSuperBowl[abbr]) / iterations;
+        else
+            results.winSuperBowlProbability[abbr] = 0.0;
+
         const int scheduledGames = scheduledGamesByTeam.at(abbr);
         const double avgFinalWins = static_cast<double>(aggregateOutcomes.simulatedWins[abbr]) / iterations;
         results.teamWinProbability[abbr] = avgFinalWins / static_cast<double>(scheduledGames);
@@ -357,6 +406,16 @@ PlayoffOutcome MonteCarlo::simulateIteration(const Season& season) {
     // Determine playoff teams
     PlayoffOutcome outcome = determinePlayoffs(simSeason);
 
+    // Simulate postseason tournament
+    std::vector<std::string> afcSeeds = getSeeds(simSeason, "AFC");
+    std::vector<std::string> nfcSeeds = getSeeds(simSeason, "NFC");
+    
+    std::string afcChampion, nfcChampion;
+    simulateConferencePostseason(simSeason, afcSeeds, outcome, rng_, afcChampion);
+    simulateConferencePostseason(simSeason, nfcSeeds, outcome, rng_, nfcChampion);
+    
+    simulateSuperBowl(simSeason, afcChampion, nfcChampion, outcome, rng_);
+
     // Record final simulated wins so expected win percentage can be derived
     // from actual simulated outcomes rather than a playoff-probability proxy.
     for (const auto& [abbr, team] : simSeason.allTeams()) {
@@ -373,6 +432,17 @@ PlayoffOutcome MonteCarlo::simulateIterationFast(const Season& season,
     simulateRemainingGamesFast(simSeason, winProbs, rng);
     simSeason.computeStandings();
     PlayoffOutcome outcome = determinePlayoffs(simSeason);
+
+    // Simulate postseason tournament
+    std::vector<std::string> afcSeeds = getSeeds(simSeason, "AFC");
+    std::vector<std::string> nfcSeeds = getSeeds(simSeason, "NFC");
+    
+    std::string afcChampion, nfcChampion;
+    simulateConferencePostseason(simSeason, afcSeeds, outcome, rng, afcChampion);
+    simulateConferencePostseason(simSeason, nfcSeeds, outcome, rng, nfcChampion);
+    
+    simulateSuperBowl(simSeason, afcChampion, nfcChampion, outcome, rng);
+
     for (const auto& [abbr, team] : simSeason.allTeams()) {
         outcome.simulatedWins[abbr] = team.wins();
     }
@@ -583,4 +653,169 @@ Season MonteCarlo::forceGameOutcome(const Season& season,
 
     forcedSeason.replaceGames(updatedGames);
     return forcedSeason;
+}
+
+std::vector<std::string> MonteCarlo::getSeeds(const Season& season, const std::string& conference) const {
+    std::vector<std::string> seeds(7, "");
+    
+    // 1. Get all teams in this conference, sorted by tiebreaker
+    auto confTeams = season.teamsByConference(conference);
+    
+    // 2. Determine all division winners in the entire season
+    std::unordered_set<std::string> divisionWinners;
+    auto divisions = season.getDivisions();
+    for (const auto& division : divisions) {
+        auto divStandings = season.teamsByDivision(division);
+        if (!divStandings.empty()) {
+            divisionWinners.insert(divStandings[0]->abbreviation());
+        }
+    }
+    
+    // 3. Separate sorted conference teams into division winners and wildcards
+    std::vector<std::string> divWinnersInConf;
+    std::vector<std::string> wildCardsInConf;
+    
+    for (const auto* team : confTeams) {
+        const std::string& abbr = team->abbreviation();
+        if (divisionWinners.count(abbr)) {
+            divWinnersInConf.push_back(abbr);
+        } else {
+            wildCardsInConf.push_back(abbr);
+        }
+    }
+    
+    // 4. Fill seeds 1-4 with division winners (already sorted!)
+    for (size_t i = 0; i < 4 && i < divWinnersInConf.size(); ++i) {
+        seeds[i] = divWinnersInConf[i];
+    }
+    
+    // 5. Fill seeds 5-7 with wildcards (already sorted!)
+    for (size_t i = 0; i < 3 && i < wildCardsInConf.size(); ++i) {
+        if (4 + i < seeds.size()) {
+            seeds[4 + i] = wildCardsInConf[i];
+        }
+    }
+    
+    return seeds;
+}
+
+void MonteCarlo::simulateConferencePostseason(const Season& season,
+                                              const std::vector<std::string>& seeds,
+                                              PlayoffOutcome& outcome,
+                                              std::mt19937& rng,
+                                              std::string& confChampionOut) const {
+    auto simGame = [&](const std::string& homeAbbr, const std::string& awayAbbr) -> std::string {
+        if (homeAbbr.empty()) return awayAbbr;
+        if (awayAbbr.empty()) return homeAbbr;
+        const Team* homeTeam = season.getTeam(homeAbbr);
+        const Team* awayTeam = season.getTeam(awayAbbr);
+        if (!homeTeam || !awayTeam) return homeAbbr;
+        double winProb = getWinProbability(*homeTeam, *awayTeam);
+        std::uniform_real_distribution<> dist(0.0, 1.0);
+        return (dist(rng) < winProb) ? homeAbbr : awayAbbr;
+    };
+
+    // Wild Card Round
+    std::string w2 = (seeds[6].empty()) ? seeds[1] : simGame(seeds[1], seeds[6]);
+    std::string w3 = (seeds[5].empty()) ? seeds[2] : simGame(seeds[2], seeds[5]);
+    std::string w4 = (seeds[4].empty()) ? seeds[3] : simGame(seeds[3], seeds[4]);
+
+    // Track seed maps
+    std::map<std::string, int> seedMap;
+    for (int i = 0; i < 7; ++i) {
+        if (!seeds[i].empty()) {
+            seedMap[seeds[i]] = i + 1;
+        }
+    }
+
+    // Divisional Round
+    std::vector<std::string> divTeams;
+    if (!seeds[0].empty()) divTeams.push_back(seeds[0]);
+    if (!w2.empty()) divTeams.push_back(w2);
+    if (!w3.empty()) divTeams.push_back(w3);
+    if (!w4.empty()) divTeams.push_back(w4);
+
+    std::sort(divTeams.begin(), divTeams.end(), [&](const std::string& a, const std::string& b) {
+        return seedMap[a] < seedMap[b];
+    });
+
+    for (const auto& team : divTeams) {
+        outcome.makeDivisional[team]++;
+    }
+
+    std::string d1, d2;
+    if (divTeams.size() >= 4) {
+        d1 = simGame(divTeams[0], divTeams[3]);
+        d2 = simGame(divTeams[1], divTeams[2]);
+    } else if (divTeams.size() == 3) {
+        d1 = simGame(divTeams[0], divTeams[2]);
+        d2 = divTeams[1];
+    } else if (divTeams.size() == 2) {
+        d1 = divTeams[0];
+        d2 = divTeams[1];
+    } else if (divTeams.size() == 1) {
+        d1 = divTeams[0];
+    }
+
+    // Conference Championship
+    std::vector<std::string> confTeams;
+    if (!d1.empty()) confTeams.push_back(d1);
+    if (!d2.empty()) confTeams.push_back(d2);
+
+    std::sort(confTeams.begin(), confTeams.end(), [&](const std::string& a, const std::string& b) {
+        return seedMap[a] < seedMap[b];
+    });
+
+    for (const auto& team : confTeams) {
+        outcome.makeConfChampionship[team]++;
+    }
+
+    std::string confChampion;
+    if (confTeams.size() >= 2) {
+        confChampion = simGame(confTeams[0], confTeams[1]);
+    } else if (!confTeams.empty()) {
+        confChampion = confTeams[0];
+    }
+
+    if (!confChampion.empty()) {
+        outcome.makeSuperBowl[confChampion]++;
+        confChampionOut = confChampion;
+    }
+}
+
+void MonteCarlo::simulateSuperBowl(const Season& season,
+                                   const std::string& afcChampion,
+                                   const std::string& nfcChampion,
+                                   PlayoffOutcome& outcome,
+                                   std::mt19937& rng) const {
+    if (afcChampion.empty() || nfcChampion.empty()) {
+        std::string nonEmp = afcChampion.empty() ? nfcChampion : afcChampion;
+        if (!nonEmp.empty()) {
+            outcome.winSuperBowl[nonEmp]++;
+        }
+        return;
+    }
+
+    const Team* afcTeam = season.getTeam(afcChampion);
+    const Team* nfcTeam = season.getTeam(nfcChampion);
+
+    if (!afcTeam || !nfcTeam) {
+        outcome.winSuperBowl[afcChampion]++;
+        return;
+    }
+
+    // Neutral-site game: no home field advantage adjustment!
+    double afcStrength = getTeamStrengthFactor(*afcTeam);
+    double nfcStrength = getTeamStrengthFactor(*nfcTeam);
+
+    const double strengthDiff = afcStrength - nfcStrength;
+    const double score = strengthWeight_ * strengthDiff;
+    double afcWinProb = sigmoid(score);
+
+    std::uniform_real_distribution<> dist(0.0, 1.0);
+    if (dist(rng) < afcWinProb) {
+        outcome.winSuperBowl[afcChampion]++;
+    } else {
+        outcome.winSuperBowl[nfcChampion]++;
+    }
 }

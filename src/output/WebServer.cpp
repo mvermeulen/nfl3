@@ -977,6 +977,16 @@ static std::string buildDashboardHtml() {
           <span>Simulation Results</span>
           <span id="sim-metadata" style="font-size:0.8rem;font-weight:500;color:var(--text-secondary)"></span>
         </div>
+
+        <div class="segmented-control" style="display:inline-flex;background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-radius:8px;padding:0.25rem;gap:0.25rem;margin:1rem 0;">
+          <button id="toggle-seeding" class="nav-btn active" onclick="setSimView('seeding')" style="font-size:0.8rem;padding:0.35rem 0.75rem">
+            Regular Seeding Odds
+          </button>
+          <button id="toggle-postseason" class="nav-btn" onclick="setSimView('postseason')" style="font-size:0.8rem;padding:0.35rem 0.75rem">
+            Postseason Tournament Odds
+          </button>
+        </div>
+
         <table id="sim-table">
           <thead>
             <tr>
@@ -1196,6 +1206,102 @@ static std::string buildDashboardHtml() {
       fetchSimulation(sliderVal);
     }
 
+    let currentSimView = "seeding";
+    let lastSimData = null;
+
+    function setSimView(view) {
+      currentSimView = view;
+      document.getElementById("toggle-seeding").classList.toggle("active", view === "seeding");
+      document.getElementById("toggle-postseason").classList.toggle("active", view === "postseason");
+      if (lastSimData) {
+        renderSimulationRows();
+      }
+    }
+
+    function renderSimulationRows() {
+      const data = lastSimData;
+      const tbody = document.getElementById("sim-tbody");
+      const thead = document.querySelector("#sim-table thead tr");
+      tbody.innerHTML = "";
+
+      if (currentSimView === "seeding") {
+        thead.innerHTML = `
+          <th>Team</th>
+          <th>Playoff %</th>
+          <th>Division Leader %</th>
+          <th>Wild Card %</th>
+        `;
+
+        const teams = data.teams.sort((a, b) => b.playoff - a.playoff);
+        teams.forEach(team => {
+          const playoffPctStr = (team.playoff * 100).toFixed(1) + "%";
+          const divisionPctStr = (team.division * 100).toFixed(1) + "%";
+          const wildcardPctStr = (team.wildcard * 100).toFixed(1) + "%";
+
+          let progressClass = "prog-indigo";
+          if (team.playoff >= 0.7) progressClass = "prog-emerald";
+          else if (team.playoff <= 0.3) progressClass = "prog-rose";
+
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>
+              <span class="team-abbr-badge" style="font-size:0.9rem">${team.abbr}</span>
+            </td>
+            <td>
+              <div class="progress-container">
+                <div class="progress-bar-bg">
+                  <div class="progress-bar-fill ${progressClass}" style="width: ${team.playoff * 100}%"></div>
+                </div>
+                <span style="font-weight:700;min-width:45px">${playoffPctStr}</span>
+              </div>
+            </td>
+            <td>${divisionPctStr}</td>
+            <td>${wildcardPctStr}</td>
+          `;
+          tbody.appendChild(row);
+        });
+      } else {
+        thead.innerHTML = `
+          <th>Team</th>
+          <th>Lombardi Trophy Odds %</th>
+          <th>Divisional Rd %</th>
+          <th>Conf. Champ Rd %</th>
+          <th>Super Bowl App %</th>
+        `;
+
+        const teams = data.teams.sort((a, b) => b.win_superbowl - a.win_superbowl);
+        teams.forEach(team => {
+          const winSuperbowlPctStr = (team.win_superbowl * 100).toFixed(1) + "%";
+          const divisionalPctStr = (team.divisional * 100).toFixed(1) + "%";
+          const confChampionshipPctStr = (team.conf_championship * 100).toFixed(1) + "%";
+          const superbowlAppPctStr = (team.superbowl * 100).toFixed(1) + "%";
+
+          let progressClass = "prog-indigo";
+          if (team.win_superbowl >= 0.10) progressClass = "prog-emerald";
+          else if (team.win_superbowl <= 0.01) progressClass = "prog-rose";
+
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>
+              <span class="team-abbr-badge" style="font-size:0.9rem">${team.abbr}</span>
+            </td>
+            <td>
+              <div class="progress-container">
+                <div class="progress-bar-bg">
+                  <div class="progress-bar-fill ${progressClass}" style="width: ${team.win_superbowl * 100}%"></div>
+                </div>
+                <span style="font-weight:700;min-width:45px">${winSuperbowlPctStr}</span>
+              </div>
+            </td>
+            <td>${divisionalPctStr}</td>
+            <td>${confChampionshipPctStr}</td>
+            <td>${superbowlAppPctStr}</td>
+          `;
+          tbody.appendChild(row);
+        });
+      }
+    }
+
     function fetchSimulation(iterations) {
       const loading = document.getElementById("sim-loading");
       const resultsCard = document.getElementById("sim-results-card");
@@ -1210,44 +1316,13 @@ static std::string buildDashboardHtml() {
           resultsCard.style.display = "block";
           document.getElementById("sim-metadata").textContent = `${parseInt(data.iterations).toLocaleString()} runs completed`;
 
-          // Sort teams by playoff odds
-          const teams = data.teams.sort((a, b) => b.playoff - a.playoff);
-          const tbody = document.getElementById("sim-tbody");
-          tbody.innerHTML = "";
-
-          teams.forEach(team => {
-            const playoffPctStr = (team.playoff * 100).toFixed(1) + "%";
-            const divisionPctStr = (team.division * 100).toFixed(1) + "%";
-            const wildcardPctStr = (team.wildcard * 100).toFixed(1) + "%";
-
-            // Determine appropriate progress bar color
-            let progressClass = "prog-indigo";
-            if (team.playoff >= 0.7) progressClass = "prog-emerald";
-            else if (team.playoff <= 0.3) progressClass = "prog-rose";
-
-            const row = document.createElement("tr");
-            row.innerHTML = `
-              <td>
-                <span class="team-abbr-badge" style="font-size:0.9rem">${team.abbr}</span>
-              </td>
-              <td>
-                <div class="progress-container">
-                  <div class="progress-bar-bg">
-                    <div class="progress-bar-fill ${progressClass}" style="width: ${team.playoff * 100}%"></div>
-                  </div>
-                  <span style="font-weight:700;min-width:45px">${playoffPctStr}</span>
-                </div>
-              </td>
-              <td>${divisionPctStr}</td>
-              <td>${wildcardPctStr}</td>
-            `;
-            tbody.appendChild(row);
-          });
+          lastSimData = data;
+          renderSimulationRows();
         })
         .catch(err => {
           loading.style.display = "none";
           resultsCard.style.display = "block";
-          document.getElementById("sim-tbody").innerHTML = `<tr><td colspan="4" style="color:var(--danger-color);text-align:center">Error running simulation: ${err}</td></tr>`;
+          document.getElementById("sim-tbody").innerHTML = `<tr><td colspan="5" style="color:var(--danger-color);text-align:center">Error running simulation: ${err}</td></tr>`;
         });
     }
 
@@ -1487,7 +1562,11 @@ std::string WebServer::simulationJson(int iterations) const {
         out << "{\"abbr\":\"" << jsonEscape(abbr)
             << "\",\"playoff\":" << prob
             << ",\"division\":" << sim.divisionWinProbability.at(abbr)
-            << ",\"wildcard\":" << sim.wildcardProbability.at(abbr) << '}';
+            << ",\"wildcard\":" << sim.wildcardProbability.at(abbr)
+            << ",\"divisional\":" << sim.makeDivisionalProbability.at(abbr)
+            << ",\"conf_championship\":" << sim.makeConfChampionshipProbability.at(abbr)
+            << ",\"superbowl\":" << sim.makeSuperBowlProbability.at(abbr)
+            << ",\"win_superbowl\":" << sim.winSuperBowlProbability.at(abbr) << '}';
     }
     out << "]}";
     return out.str();

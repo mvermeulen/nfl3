@@ -141,6 +141,10 @@ TEST_CASE("WebServer API endpoints return expected payloads", "[web]") {
         const auto response = server.handleForTests("GET", "/api/simulation?iterations=12");
         REQUIRE(response.statusCode == 200);
         REQUIRE(response.body.find("\"iterations\":12") != std::string::npos);
+        REQUIRE(response.body.find("\"divisional\"") != std::string::npos);
+        REQUIRE(response.body.find("\"conf_championship\"") != std::string::npos);
+        REQUIRE(response.body.find("\"superbowl\"") != std::string::npos);
+        REQUIRE(response.body.find("\"win_superbowl\"") != std::string::npos);
     }
 
     SECTION("POST /api/update-result persists updated score") {

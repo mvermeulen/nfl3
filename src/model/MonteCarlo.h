@@ -15,6 +15,12 @@ struct PlayoffOutcome {
     std::map<std::string, int> divisionWins;        // team abbr -> count
     std::map<std::string, int> wildcardWins;        // team abbr -> count
     std::map<std::string, int> simulatedWins;       // team abbr -> summed final wins
+    
+    // Phase 2: Postseason counts
+    std::map<std::string, int> makeDivisional;       // team abbr -> count
+    std::map<std::string, int> makeConfChampionship;  // team abbr -> count
+    std::map<std::string, int> makeSuperBowl;         // team abbr -> count
+    std::map<std::string, int> winSuperBowl;          // team abbr -> count
 };
 
 /**
@@ -27,6 +33,12 @@ struct SimulationResults {
     std::map<std::string, double> playoffProbability;
     std::map<std::string, double> divisionWinProbability;
     std::map<std::string, double> wildcardProbability;
+    
+    // Phase 2: Postseason probabilities (0.0 - 1.0)
+    std::map<std::string, double> makeDivisionalProbability;
+    std::map<std::string, double> makeConfChampionshipProbability;
+    std::map<std::string, double> makeSuperBowlProbability;
+    std::map<std::string, double> winSuperBowlProbability;
     
     // Win probabilities for unplayed games
     std::map<std::string, double> teamWinProbability;  // team abbr -> estimated win %
@@ -192,6 +204,29 @@ private:
     Season forceGameOutcome(const Season& season,
                             const Game& targetGame,
                             bool homeWins) const;
+
+    /**
+     * Retrieve ordered seeds (1 to 7) for a conference based on tiebreakers.
+     */
+    std::vector<std::string> getSeeds(const Season& season, const std::string& conference) const;
+
+    /**
+     * Simulate a conference postseason tournament (Wild Card -> Divisional -> Conf Championship).
+     */
+    void simulateConferencePostseason(const Season& season,
+                                      const std::vector<std::string>& seeds,
+                                      PlayoffOutcome& outcome,
+                                      std::mt19937& rng,
+                                      std::string& confChampionOut) const;
+
+    /**
+     * Simulate the Super Bowl neutral-site game.
+     */
+    void simulateSuperBowl(const Season& season,
+                           const std::string& afcChampion,
+                           const std::string& nfcChampion,
+                           PlayoffOutcome& outcome,
+                           std::mt19937& rng) const;
 };
 
 #endif // MONTECARLO_H
