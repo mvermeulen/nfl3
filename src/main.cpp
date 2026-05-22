@@ -3,6 +3,8 @@
 #include <iomanip>
 #include <string>
 #include <stdexcept>
+#include <filesystem>
+#include <cstdlib>
 #include "app/CommandSupport.h"
 #include "model/Season.h"
 #include "model/MonteCarlo.h"
@@ -24,7 +26,8 @@ void printUsage() {
               << "  ./nfl3 load-schedule <path>\n"
               << "  ./nfl3 calibration-report <start-year> <end-year>\n"
               << "  ./nfl3 web [port]\n"
-              << "  ./nfl3 backfit-model <year>\n";
+              << "  ./nfl3 backfit-model <year>\n"
+              << "  ./nfl3 fetch-live [week|all]\n";
 }
 
 } // namespace
@@ -37,6 +40,30 @@ int main(int argc, char* argv[]) {
         }
 
         std::cout << "=== nfl3 NFL Game State Tracker ===" << std::endl << std::endl;
+
+        if (command == "fetch-live") {
+            std::string pythonCmd = "python3";
+            if (std::filesystem::exists(".venv/bin/python")) {
+                pythonCmd = ".venv/bin/python";
+            }
+            std::string scriptPath = "scripts/fetch_live_scores.py";
+            std::string fullCmd = pythonCmd + " " + scriptPath;
+            if (argc > 2) {
+                std::string arg = argv[2];
+                if (arg == "all") {
+                    fullCmd += " --all";
+                } else {
+                    fullCmd += " --week " + arg;
+                }
+            }
+            std::cout << "Invoking score ingestion: " << fullCmd << std::endl;
+            int status = std::system(fullCmd.c_str());
+            if (status != 0) {
+                std::cerr << "Error: Score ingestion failed with exit status " << status << std::endl;
+                return 1;
+            }
+            return 0;
+        }
 
         if (command == "load-schedule") {
             if (argc < 3) {

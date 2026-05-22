@@ -2,12 +2,14 @@
 
 #include "model/MonteCarlo.h"
 #include "util/CsvParser.h"
+#include "app/CommandSupport.h"
 
 #include <algorithm>
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <map>
 #include <netinet/in.h>
@@ -264,6 +266,40 @@ std::string WebServer::handleRequest(const std::string& method,
         contentType = "application/json; charset=utf-8";
         return "{\"ok\":true}";
     }
+    if (path == "/api/fetch-live") {
+        if (method != "POST") {
+            statusCode = 405;
+            contentType = "application/json; charset=utf-8";
+            return "{\"error\":\"POST required\"}";
+        }
+
+        std::string pythonCmd = "python3";
+        if (std::filesystem::exists(".venv/bin/python")) {
+            pythonCmd = ".venv/bin/python";
+        }
+        std::string scriptPath = "scripts/fetch_live_scores.py";
+        std::string fullCmd = pythonCmd + " " + scriptPath + " --all --schedule " + schedulePath_;
+
+        int status = std::system(fullCmd.c_str());
+        if (status != 0) {
+            statusCode = 500;
+            contentType = "application/json; charset=utf-8";
+            return "{\"ok\":false,\"error\":\"Score ingestion failed\"}";
+        }
+
+        // Reload season schedule and standings
+        try {
+            season_ = nfl3::loadSeasonFromCsvFiles("data/teams.csv", schedulePath_);
+            season_.computeStandings();
+        } catch (const std::exception& e) {
+            statusCode = 500;
+            contentType = "application/json; charset=utf-8";
+            return std::string("{\"ok\":false,\"error\":\"Failed to reload season standings: ") + jsonEscape(e.what()) + "\"}";
+        }
+
+        contentType = "application/json; charset=utf-8";
+        return "{\"ok\":true,\"message\":\"Successfully synchronized live scores.\"}";
+    }
 
     statusCode = 404;
     contentType = "text/plain; charset=utf-8";
@@ -515,6 +551,14 @@ static std::string buildDashboardHtml() {
     .btn-secondary:hover {
       background: rgba(255, 255, 255, 0.1);
       border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .spinning {
+      animation: spin 1s linear infinite !important;
     }
 
     /* Grids & Cards */
@@ -933,10 +977,14 @@ static std::string buildDashboardHtml() {
         </button>
       </div>
 
-      <div class="control-panel">
-        <div class="search-wrapper">
+      <div class="control-panel" style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin-bottom:1.5rem">
+        <div class="search-wrapper" style="flex:1;min-width:250px">
           <input type="text" id="teamSearch" class="form-input" placeholder="Search by team or division..." oninput="filterTeams()">
         </div>
+        <button id="sync-scores-btn" class="btn btn-secondary" onclick="syncLiveScores()" style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.25);color:#a5b4fc">
+          <svg id="sync-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 0.5s ease"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          <span id="sync-btn-text">Sync Live Scores</span>
+        </button>
       </div>
 
       <div id="standings-container" class="division-grid">
@@ -1460,6 +1508,36 @@ static std::string buildDashboardHtml() {
       setTimeout(() => {
         toast.classList.remove("show");
       }, 3500);
+    }
+
+    function syncLiveScores() {
+      const btn = document.getElementById("sync-scores-btn");
+      const icon = document.getElementById("sync-icon");
+      const btnText = document.getElementById("sync-btn-text");
+
+      btn.disabled = true;
+      icon.classList.add("spinning");
+      btnText.textContent = "Syncing...";
+
+      fetch("/api/fetch-live", { method: "POST" })
+        .then(res => res.json())
+        .then(data => {
+          btn.disabled = false;
+          icon.classList.remove("spinning");
+          btnText.textContent = "Sync Live Scores";
+          if (data.ok) {
+            showToast("Standings synchronized with live NFL scores!");
+            loadData(currentTab);
+          } else {
+            alert("Sync failed: " + data.error);
+          }
+        })
+        .catch(err => {
+          btn.disabled = false;
+          icon.classList.remove("spinning");
+          btnText.textContent = "Sync Live Scores";
+          alert("Connection error: " + err);
+        });
     }
 
     // Dynamic Team Searching
