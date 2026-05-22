@@ -43,7 +43,7 @@ private:
     std::string renderImpactHtml(int iterations) const;
 
     std::string standingsJson() const;
-    std::string simulationJson(int iterations) const;
+    std::string simulationJson(int iterations, const std::string& locksStr = "") const;
     std::string impactJson(int iterations) const;
 
     bool applyResultUpdate(const std::string& body, std::string& error);

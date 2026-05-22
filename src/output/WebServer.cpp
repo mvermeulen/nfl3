@@ -237,13 +237,79 @@ std::string WebServer::handleRequest(const std::string& method,
         contentType = "text/html; charset=utf-8";
         return renderImpactHtml(parseIterations(rawPath, defaultIterations_));
     }
+    if (method == "GET" && path == "/sandbox") {
+        contentType = "text/html; charset=utf-8";
+        return renderSimulationHtml(defaultIterations_);
+    }
     if (method == "GET" && path == "/api/standings") {
         contentType = "application/json; charset=utf-8";
         return standingsJson();
     }
-    if (method == "GET" && path == "/api/simulation") {
+    if (method == "GET" && path == "/api/games") {
         contentType = "application/json; charset=utf-8";
-        return simulationJson(parseIterations(rawPath, defaultIterations_));
+        std::ostringstream out;
+        out << "{\"games\":[";
+        bool first = true;
+        for (const auto& game : season_.allGames()) {
+            if (!first) {
+                out << ',';
+            }
+            first = false;
+            out << "{\"week\":" << game.week()
+                << ",\"date\":\"" << jsonEscape(game.date())
+                << "\",\"home_team\":\"" << jsonEscape(game.homeTeam())
+                << "\",\"away_team\":\"" << jsonEscape(game.awayTeam())
+                << "\",\"home_score\":" << game.homeScore()
+                << ",\"away_score\":" << game.awayScore()
+                << ",\"status\":\"" << jsonEscape(game.status()) << "\"}";
+        }
+        out << "]}";
+        return out.str();
+    }
+    if (path == "/api/simulation") {
+        if (method != "GET" && method != "POST") {
+            statusCode = 405;
+            contentType = "application/json; charset=utf-8";
+            return "{\"error\":\"GET or POST required\"}";
+        }
+        
+        contentType = "application/json; charset=utf-8";
+        int iterations = defaultIterations_;
+        std::string locksStr = "";
+        
+        if (method == "POST") {
+            const auto params = parseUrlEncoded(body);
+            auto it = params.find("iterations");
+            if (it != params.end()) {
+                try {
+                    iterations = std::stoi(it->second);
+                } catch (...) {}
+            }
+            it = params.find("locks");
+            if (it != params.end()) {
+                locksStr = it->second;
+            }
+        } else {
+            iterations = parseIterations(rawPath, defaultIterations_);
+            const size_t queryPos = rawPath.find('?');
+            if (queryPos != std::string::npos) {
+                const std::string query = rawPath.substr(queryPos + 1);
+                std::stringstream ss(query);
+                std::string part;
+                while (std::getline(ss, part, '&')) {
+                    const size_t eq = part.find('=');
+                    if (eq != std::string::npos) {
+                        const std::string key = part.substr(0, eq);
+                        const std::string value = part.substr(eq + 1);
+                        if (key == "locks") {
+                            locksStr = urlDecodeLocal(value);
+                        }
+                    }
+                }
+            }
+        }
+        
+        return simulationJson(iterations, locksStr);
     }
     if (method == "GET" && path == "/api/impact") {
         contentType = "application/json; charset=utf-8";
@@ -946,6 +1012,104 @@ static std::string buildDashboardHtml() {
       font-size: 0.85rem;
       letter-spacing: 0.02em;
     }
+
+    /* What-If Sandbox Specific Styles */
+    .sandbox-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.15fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .sandbox-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .sandbox-games-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      max-height: 70vh;
+      overflow-y: auto;
+      padding-right: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .sandbox-game-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: all 0.2s ease;
+    }
+    .sandbox-game-card:hover {
+      border-color: rgba(99, 102, 241, 0.3);
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .sandbox-game-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      font-family: var(--font-display);
+      font-weight: 600;
+    }
+    .sandbox-team-row {
+      display: flex;
+      gap: 0.75rem;
+    }
+    .sandbox-team-btn {
+      flex: 1;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 0.6rem 0.8rem;
+      border-radius: 8px;
+      font-family: var(--font-display);
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.9rem;
+    }
+    .sandbox-team-btn:hover:not(:disabled) {
+      border-color: var(--accent-color);
+      color: var(--text-primary);
+      background: rgba(99, 102, 241, 0.08);
+    }
+    .sandbox-team-btn.active {
+      background: var(--accent-gradient);
+      border-color: transparent;
+      color: white;
+      box-shadow: var(--accent-glow);
+    }
+    .sandbox-team-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .sandbox-header-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    .sandbox-badge {
+      background: rgba(99, 102, 241, 0.15);
+      color: #a5b4fc;
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-family: var(--font-display);
+      font-weight: 600;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+    }
   </style>
 </head>
 <body>
@@ -960,6 +1124,7 @@ static std::string buildDashboardHtml() {
         <button id="nav-standings" class="nav-btn" onclick="switchTab('standings')">Standings</button>
         <button id="nav-simulation" class="nav-btn" onclick="switchTab('simulation')">Playoff Sim</button>
         <button id="nav-impact" class="nav-btn" onclick="switchTab('impact')">Game Importance</button>
+        <button id="nav-sandbox" class="nav-btn" onclick="switchTab('sandbox')">What-If Sandbox</button>
       </nav>
     </div>
   </header>
@@ -1069,6 +1234,72 @@ static std::string buildDashboardHtml() {
         <!-- Matchup leverage cards loaded dynamically -->
       </div>
     </section>
+
+    <!-- SANDBOX SECTION -->
+    <section id="sandbox-section" class="view-section">
+      <div class="dashboard-header">
+        <div>
+          <h1 class="page-title">What-If Playoff Sandbox</h1>
+          <p class="page-desc">Toggle hypothetical winners for upcoming games to instantly calculate simulated odds changes.</p>
+        </div>
+        <button class="btn btn-secondary" onclick="clearSandboxPicks()" style="background:rgba(244,63,94,0.06);border:1px solid rgba(244,63,94,0.25);color:#fda4af">
+          Clear All Picks
+        </button>
+      </div>
+
+      <div class="sandbox-grid">
+        <!-- Left column: Game list by week -->
+        <div class="card">
+          <div class="sandbox-header-controls">
+            <div style="display:flex;align-items:center;gap:0.75rem">
+              <span class="form-label" style="margin-bottom:0">Week:</span>
+              <select id="sandboxWeekSelect" class="form-input" style="width:auto;padding:0.4rem 2rem 0.4rem 1rem" onchange="changeSandboxWeek(this.value)">
+                <!-- Dynamically populated weeks -->
+              </select>
+            </div>
+            <span id="sandboxPickCount" class="sandbox-badge">0 Picks Locked</span>
+          </div>
+
+          <div id="sandbox-games-container" class="sandbox-games-list">
+            <!-- Game cards with winner toggle buttons -->
+          </div>
+        </div>
+
+        <!-- Right column: Standings/Odds panel -->
+        <div class="card" style="position:relative">
+          <!-- Spinner overlay inside card -->
+          <div id="sandbox-spinner" class="loading-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(22,29,48,0.85);backdrop-filter:blur(4px);z-index:10;border-radius:16px;display:none;justify-content:center;align-items:center">
+            <div style="text-align:center">
+              <div class="spinner" style="margin:0 auto 1rem auto"></div>
+              <p class="loading-text" style="font-size:1rem">Recalculating Playoff Standings...</p>
+            </div>
+          </div>
+
+          <div class="card-title">
+            <span>Simulated Odds Standings</span>
+            <span style="font-size:0.8rem;font-weight:500;color:var(--text-secondary)">2,000 Monte Carlo Iterations</span>
+          </div>
+
+          <div class="segmented-control" style="display:inline-flex;background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-radius:8px;padding:0.25rem;gap:0.25rem;margin:1rem 0;">
+            <button id="sandbox-toggle-seeding" class="nav-btn active" onclick="setSandboxView('seeding')" style="font-size:0.8rem;padding:0.35rem 0.75rem">
+              Regular Seeding Odds
+            </button>
+            <button id="sandbox-toggle-postseason" class="nav-btn" onclick="setSandboxView('postseason')" style="font-size:0.8rem;padding:0.35rem 0.75rem">
+              Postseason Tournament Odds
+            </button>
+          </div>
+
+          <table id="sandbox-table">
+            <thead>
+              <!-- Headers will change dynamically -->
+            </thead>
+            <tbody id="sandbox-tbody">
+              <!-- Dynamically populated rows with odds changes -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- Modal -->
@@ -1120,6 +1351,13 @@ static std::string buildDashboardHtml() {
     // Global active states
     let currentTab = "standings";
 
+    // Sandbox state variables
+    let sandboxGames = [];
+    let sandboxBaseOdds = null;
+    let sandboxLocks = {}; // Key: "week:home:away", Value: "home" | "away"
+    let sandboxTabMode = "seeding"; // seeding or postseason
+    let sandboxSelectedWeek = 1;
+
     document.addEventListener("DOMContentLoaded", () => {
       // Sync numerical slider value formatted
       syncSliderVal(document.getElementById("simSlider").value);
@@ -1130,6 +1368,8 @@ static std::string buildDashboardHtml() {
         currentTab = "simulation";
       } else if (path === "/impact") {
         currentTab = "impact";
+      } else if (path === "/sandbox") {
+        currentTab = "sandbox";
       } else {
         currentTab = "standings";
       }
@@ -1174,6 +1414,7 @@ static std::string buildDashboardHtml() {
       let targetTab = "standings";
       if (path === "/simulation") targetTab = "simulation";
       else if (path === "/impact") targetTab = "impact";
+      else if (path === "/sandbox") targetTab = "sandbox";
       switchTab(targetTab, true);
     };
 
@@ -1188,6 +1429,8 @@ static std::string buildDashboardHtml() {
         }
       } else if (tabName === "impact") {
         fetchImpact();
+      } else if (tabName === "sandbox") {
+        fetchSandbox();
       }
     }
 
@@ -1568,6 +1811,326 @@ static std::string buildDashboardHtml() {
         }
       });
     }
+
+    // What-If Scenario Sandbox Logic
+    let lastSandboxSimData = null;
+
+    function fetchSandbox() {
+      if (sandboxGames.length > 0 && sandboxBaseOdds) {
+        // Already loaded, just render
+        renderSandboxGames();
+        if (lastSandboxSimData) {
+          renderSandboxTable(lastSandboxSimData);
+        } else {
+          runSandboxSimulation();
+        }
+        return;
+      }
+
+      // Show loader in game list and table
+      document.getElementById("sandbox-games-container").innerHTML = `
+        <div style="text-align:center;padding:4rem;">
+          <div class="spinner" style="margin:0 auto 1rem auto"></div>
+          Loading schedule...
+        </div>
+      `;
+      document.getElementById("sandbox-tbody").innerHTML = `
+        <tr><td colspan="5" style="text-align:center;padding:4rem;">
+          <div class="spinner" style="margin:0 auto 1rem auto"></div>
+          Calculating baseline...
+        </td></tr>
+      `;
+
+      // Fetch games
+      fetch("/api/games")
+        .then(res => res.json())
+        .then(gamesData => {
+          sandboxGames = gamesData.games;
+
+          // Fetch baseline simulation
+          fetch("/api/simulation?iterations=2000")
+            .then(res => res.json())
+            .then(simData => {
+              // Store base odds as map by team abbreviation for O(1) lookup
+              sandboxBaseOdds = {};
+              simData.teams.forEach(t => {
+                sandboxBaseOdds[t.abbr] = t;
+              });
+
+              // Populate week select dropdown
+              const weekSelect = document.getElementById("sandboxWeekSelect");
+              weekSelect.innerHTML = "";
+              const uniqueWeeks = [...new Set(sandboxGames.map(g => g.week))].sort((a,b) => a - b);
+              uniqueWeeks.forEach(w => {
+                const opt = document.createElement("option");
+                opt.value = w;
+                opt.textContent = "Week " + w;
+                weekSelect.appendChild(opt);
+              });
+
+              // Determine initial week: first week with an unplayed game
+              const firstUnplayedGame = sandboxGames.find(g => g.status === "scheduled");
+              if (firstUnplayedGame) {
+                sandboxSelectedWeek = firstUnplayedGame.week;
+              } else {
+                sandboxSelectedWeek = 1;
+              }
+              weekSelect.value = sandboxSelectedWeek;
+
+              renderSandboxGames();
+              renderSandboxTable(simData);
+            })
+            .catch(err => {
+              document.getElementById("sandbox-tbody").innerHTML = `
+                <tr><td colspan="5" style="color:var(--danger-color);text-align:center">Error calculating baseline simulation: ${err}</td></tr>
+              `;
+            });
+        })
+        .catch(err => {
+          document.getElementById("sandbox-games-container").innerHTML = `
+            <div style="color:var(--danger-color);text-align:center;padding:2rem;">Failed to load sandbox schedule: ${err}</div>
+          `;
+        });
+    }
+
+    function changeSandboxWeek(week) {
+      sandboxSelectedWeek = parseInt(week);
+      renderSandboxGames();
+    }
+
+    function renderSandboxGames() {
+      const container = document.getElementById("sandbox-games-container");
+      container.innerHTML = "";
+
+      const games = sandboxGames.filter(g => g.week === sandboxSelectedWeek);
+      if (games.length === 0) {
+        container.innerHTML = `<div style="text-align:center;padding:2rem;color:var(--text-secondary)">No games in this week.</div>`;
+        return;
+      }
+
+      games.forEach(game => {
+        const key = `${game.week}:${game.home_team}:${game.away_team}`;
+        const lockChoice = sandboxLocks[key];
+
+        const card = document.createElement("div");
+        card.className = "sandbox-game-card";
+
+        const isPlayed = game.status === "final" || game.status === "in_progress";
+
+        let headerStatus = "";
+        if (isPlayed) {
+          headerStatus = `<span style="color:var(--success-color);font-weight:600">Final: ${game.home_score} - ${game.away_score}</span>`;
+        } else {
+          headerStatus = `<span style="color:var(--text-secondary)">${game.date || 'Scheduled'}</span>`;
+        }
+
+        card.innerHTML = `
+          <div class="sandbox-game-header">
+            <span>Matchup</span>
+            ${headerStatus}
+          </div>
+          <div class="sandbox-team-row">
+            <button class="sandbox-team-btn ${lockChoice === 'home' ? 'active' : ''}" 
+              ${isPlayed ? 'disabled' : ''} 
+              onclick="toggleSandboxPick(${game.week}, '${game.home_team}', '${game.away_team}', 'home')">
+              <span>${game.home_team}</span>
+              ${isPlayed && game.home_score >= game.away_score ? '<span style="font-size:0.75rem">&#x2714;</span>' : ''}
+            </button>
+            <button class="sandbox-team-btn ${lockChoice === 'away' ? 'active' : ''}" 
+              ${isPlayed ? 'disabled' : ''} 
+              onclick="toggleSandboxPick(${game.week}, '${game.home_team}', '${game.away_team}', 'away')">
+              <span>${game.away_team}</span>
+              ${isPlayed && game.away_score >= game.home_score ? '<span style="font-size:0.75rem">&#x2714;</span>' : ''}
+            </button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function toggleSandboxPick(week, home, away, choice) {
+      const key = `${week}:${home}:${away}`;
+      if (sandboxLocks[key] === choice) {
+        delete sandboxLocks[key];
+      } else {
+        sandboxLocks[key] = choice;
+      }
+
+      // Update badge
+      const count = Object.keys(sandboxLocks).length;
+      document.getElementById("sandboxPickCount").textContent = `${count} Pick${count !== 1 ? 's' : ''} Locked`;
+
+      renderSandboxGames();
+      runSandboxSimulation();
+    }
+
+    function clearSandboxPicks() {
+      sandboxLocks = {};
+      document.getElementById("sandboxPickCount").textContent = "0 Picks Locked";
+      renderSandboxGames();
+      runSandboxSimulation();
+    }
+
+    function runSandboxSimulation() {
+      const spinner = document.getElementById("sandbox-spinner");
+      spinner.style.display = "flex";
+
+      const locks = [];
+      for (const [key, winner] of Object.entries(sandboxLocks)) {
+        locks.push(`${key}:${winner}`);
+      }
+      const locksStr = locks.join(",");
+
+      const params = new URLSearchParams();
+      params.append("iterations", "2000");
+      params.append("locks", locksStr);
+
+      fetch("/api/simulation", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: params.toString()
+      })
+      .then(res => res.json())
+      .then(data => {
+        spinner.style.display = "none";
+        renderSandboxTable(data);
+      })
+      .catch(err => {
+        spinner.style.display = "none";
+        alert("Sandbox simulation error: " + err);
+      });
+    }
+
+    function setSandboxView(view) {
+      sandboxTabMode = view;
+      document.getElementById("sandbox-toggle-seeding").classList.toggle("active", view === "seeding");
+      document.getElementById("sandbox-toggle-postseason").classList.toggle("active", view === "postseason");
+      if (lastSandboxSimData) {
+        renderSandboxTable(lastSandboxSimData);
+      }
+    }
+
+    function renderSandboxTable(simData) {
+      lastSandboxSimData = simData;
+      const tbody = document.getElementById("sandbox-tbody");
+      const table = document.getElementById("sandbox-table");
+      tbody.innerHTML = "";
+
+      // Setup Headers
+      let headersHTML = "";
+      if (sandboxTabMode === "seeding") {
+        headersHTML = `
+          <tr>
+            <th>Team</th>
+            <th>Playoff % (Delta)</th>
+            <th>Div. Leader %</th>
+            <th>Wild Card %</th>
+          </tr>
+        `;
+      } else {
+        headersHTML = `
+          <tr>
+            <th>Team</th>
+            <th>Lombardi Odds % (Delta)</th>
+            <th>Div. Rd %</th>
+            <th>Conf. Champ Rd %</th>
+            <th>Super Bowl App %</th>
+          </tr>
+        `;
+      }
+      table.querySelector("thead").innerHTML = headersHTML;
+
+      // Sort teams
+      let sortedTeams = [];
+      if (sandboxTabMode === "seeding") {
+        sortedTeams = [...simData.teams].sort((a,b) => b.playoff - a.playoff);
+      } else {
+        sortedTeams = [...simData.teams].sort((a,b) => b.win_superbowl - a.win_superbowl);
+      }
+
+      sortedTeams.forEach(team => {
+        const base = sandboxBaseOdds ? sandboxBaseOdds[team.abbr] : null;
+        
+        let targetVal = 0;
+        let baseVal = 0;
+        let diff = 0;
+
+        if (sandboxTabMode === "seeding") {
+          targetVal = team.playoff;
+          baseVal = base ? base.playoff : targetVal;
+        } else {
+          targetVal = team.win_superbowl;
+          baseVal = base ? base.win_superbowl : targetVal;
+        }
+        diff = targetVal - baseVal;
+
+        // Build delta badge
+        let deltaBadgeHTML = "";
+        // Threshold of 0.05% to avoid random simulation noise showing up as green/red (+0.0%)
+        if (Math.abs(diff) >= 0.0005) {
+          const sign = diff > 0 ? "+" : "";
+          const badgeClass = diff > 0 ? "delta-positive" : "delta-negative";
+          deltaBadgeHTML = `<span class="delta-badge ${badgeClass}" style="margin-left: 0.5rem; font-size: 0.75rem; padding: 0.15rem 0.35rem">${sign}${(diff * 100).toFixed(1)}%</span>`;
+        }
+
+        const pctStr = (targetVal * 100).toFixed(1) + "%";
+
+        const row = document.createElement("tr");
+
+        if (sandboxTabMode === "seeding") {
+          const divLeaderPct = (team.division * 100).toFixed(1) + "%";
+          const wildCardPct = (team.wildcard * 100).toFixed(1) + "%";
+
+          let progressClass = "prog-indigo";
+          if (team.playoff >= 0.7) progressClass = "prog-emerald";
+          else if (team.playoff <= 0.3) progressClass = "prog-rose";
+
+          row.innerHTML = `
+            <td><span class="team-abbr-badge">${team.abbr}</span></td>
+            <td>
+              <div class="progress-container">
+                <div class="progress-bar-bg" style="width: 55px">
+                  <div class="progress-bar-fill ${progressClass}" style="width: ${team.playoff * 100}%"></div>
+                </div>
+                <span style="font-weight:700; min-width: 40px">${pctStr}</span>
+                ${deltaBadgeHTML}
+              </div>
+            </td>
+            <td>${divLeaderPct}</td>
+            <td>${wildCardPct}</td>
+          `;
+        } else {
+          const winSuperbowlPctStr = (team.win_superbowl * 100).toFixed(1) + "%";
+          const divisionalPctStr = (team.divisional * 100).toFixed(1) + "%";
+          const confChampionshipPctStr = (team.conf_championship * 100).toFixed(1) + "%";
+          const superbowlAppPctStr = (team.superbowl * 100).toFixed(1) + "%";
+
+          let progressClass = "prog-indigo";
+          if (team.win_superbowl >= 0.10) progressClass = "prog-emerald";
+          else if (team.win_superbowl <= 0.01) progressClass = "prog-rose";
+
+          row.innerHTML = `
+            <td><span class="team-abbr-badge">${team.abbr}</span></td>
+            <td>
+              <div class="progress-container">
+                <div class="progress-bar-bg" style="width: 55px">
+                  <div class="progress-bar-fill ${progressClass}" style="width: ${team.win_superbowl * 100}%"></div>
+                </div>
+                <span style="font-weight:700; min-width: 40px">${pctStr}</span>
+                ${deltaBadgeHTML}
+              </div>
+            </td>
+            <td>${divisionalPctStr}</td>
+            <td>${confChampionshipPctStr}</td>
+            <td>${superbowlAppPctStr}</td>
+          `;
+        }
+
+        tbody.appendChild(row);
+      });
+    }
   </script>
 </body>
 </html>)rawhtml";
@@ -1621,11 +2184,39 @@ std::string WebServer::standingsJson() const {
     return out.str();
 }
 
-std::string WebServer::simulationJson(int iterations) const {
+std::string WebServer::simulationJson(int iterations, const std::string& locksStr) const {
     MonteCarlo mc;
     mc.setModelParameters(homeAdvantage_, strengthWeight_);
     mc.loadHistoricalStrengths(season_, "data/historical");
     Season current = season_;
+
+    if (!locksStr.empty()) {
+        std::vector<Game> updatedGames = current.allGames();
+        std::stringstream ss(locksStr);
+        std::string lockItem;
+        while (std::getline(ss, lockItem, ',')) {
+            if (lockItem.empty()) continue;
+            std::stringstream itemSs(lockItem);
+            std::string weekStr, home, away, winner;
+            if (std::getline(itemSs, weekStr, ':') &&
+                std::getline(itemSs, home, ':') &&
+                std::getline(itemSs, away, ':') &&
+                std::getline(itemSs, winner, ':')) {
+                try {
+                    int w = std::stoi(weekStr);
+                    for (auto& game : updatedGames) {
+                        if (game.week() == w && game.homeTeam() == home && game.awayTeam() == away) {
+                            int homeScore = (winner == "home") ? 1 : 0;
+                            int awayScore = (winner == "away") ? 1 : 0;
+                            game = Game(w, game.date(), home, away, homeScore, awayScore, "final");
+                        }
+                    }
+                } catch (...) {}
+            }
+        }
+        current.replaceGames(updatedGames);
+    }
+
     current.computeStandings();
     const auto sim = mc.simulate(current, iterations, 12345);
 

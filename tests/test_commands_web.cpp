@@ -169,6 +169,27 @@ TEST_CASE("WebServer API endpoints return expected payloads", "[web]") {
         REQUIRE(found);
     }
 
+    SECTION("GET /api/games returns the schedule") {
+        const auto response = server.handleForTests("GET", "/api/games");
+        REQUIRE(response.statusCode == 200);
+        REQUIRE(response.contentType.find("application/json") != std::string::npos);
+        REQUIRE(response.body.find("\"games\"") != std::string::npos);
+        REQUIRE(response.body.find("\"home_team\"") != std::string::npos);
+        REQUIRE(response.body.find("\"away_team\"") != std::string::npos);
+    }
+
+    SECTION("POST /api/simulation with locks computes in-memory odds") {
+        // Locks week 1 KC vs DEN as away winner (away_score=1, home_score=0)
+        const auto response = server.handleForTests(
+            "POST",
+            "/api/simulation",
+            "iterations=10&locks=1:KC:DEN:away");
+        
+        REQUIRE(response.statusCode == 200);
+        REQUIRE(response.body.find("\"iterations\":10") != std::string::npos);
+        REQUIRE(response.body.find("\"playoff\"") != std::string::npos);
+    }
+
     SECTION("Unknown endpoint returns 404") {
         const auto response = server.handleForTests("GET", "/api/not-real");
         REQUIRE(response.statusCode == 404);
