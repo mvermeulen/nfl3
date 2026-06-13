@@ -10,6 +10,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <map>
 #include <netinet/in.h>
@@ -119,6 +121,8 @@ std::string readFullRequest(int clientFd) {
 
 } // namespace
 
+static std::string buildDashboardHtml();
+
 WebServer::WebServer(Season season,
                      const std::string& schedulePath,
                      double homeAdvantage,
@@ -128,7 +132,16 @@ WebServer::WebServer(Season season,
       schedulePath_(schedulePath),
       homeAdvantage_(homeAdvantage),
       strengthWeight_(strengthWeight),
-      defaultIterations_(defaultIterations) {}
+      defaultIterations_(defaultIterations) {
+    std::string historyPath = "data/probability_history.csv";
+    std::ifstream f(historyPath.c_str());
+    if (!f.good()) {
+        std::cout << "Probability history file not found. Building it on startup..." << std::endl;
+        rebuildProbabilityHistory(10000); // 10k is fast for startup baseline
+    } else {
+        std::cout << "Using existing probability history file." << std::endl;
+    }
+}
 
 WebServer::Response WebServer::handleForTests(const std::string& method,
                                 const std::string& rawPath,
@@ -240,6 +253,10 @@ std::string WebServer::handleRequest(const std::string& method,
     if (method == "GET" && path == "/sandbox") {
         contentType = "text/html; charset=utf-8";
         return renderSimulationHtml(defaultIterations_);
+    }
+    if (method == "GET" && path == "/history") {
+        contentType = "text/html; charset=utf-8";
+        return buildDashboardHtml();
     }
     if (method == "GET" && path == "/api/standings") {
         contentType = "application/json; charset=utf-8";
@@ -365,6 +382,45 @@ std::string WebServer::handleRequest(const std::string& method,
 
         contentType = "application/json; charset=utf-8";
         return "{\"ok\":true,\"message\":\"Successfully synchronized live scores.\"}";
+    }
+    if (method == "GET" && path == "/api/probability-history") {
+        contentType = "application/json; charset=utf-8";
+        try {
+            auto table = CsvParser::parse("data/probability_history.csv");
+            std::ostringstream out;
+            out << "[";
+            bool first = true;
+            for (const auto& row : table) {
+                if (!first) out << ",";
+                first = false;
+                out << "{\"week\":" << row.at("week")
+                    << ",\"team\":\"" << jsonEscape(row.at("team")) << "\""
+                    << ",\"playoff_prob\":" << row.at("playoff_prob")
+                    << ",\"superbowl_prob\":" << row.at("superbowl_prob") << "}";
+            }
+            out << "]";
+            return out.str();
+        } catch (const std::exception& e) {
+            statusCode = 500;
+            contentType = "application/json; charset=utf-8";
+            return "{\"error\":\"Failed to load probability history: " + std::string(e.what()) + "\"}";
+        }
+    }
+    if (path == "/api/rebuild-probability-history") {
+        if (method != "POST") {
+            statusCode = 405;
+            contentType = "application/json; charset=utf-8";
+            return "{\"error\":\"POST required\"}";
+        }
+        contentType = "application/json; charset=utf-8";
+        try {
+            rebuildProbabilityHistory(100000);
+            return "{\"ok\":true}";
+        } catch (const std::exception& e) {
+            statusCode = 500;
+            contentType = "application/json; charset=utf-8";
+            return "{\"ok\":false,\"error\":\"Failed to rebuild probability history: " + std::string(e.what()) + "\"}";
+        }
     }
 
     statusCode = 404;
@@ -1111,6 +1167,7 @@ static std::string buildDashboardHtml() {
       border: 1px solid rgba(99, 102, 241, 0.3);
     }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
@@ -1125,6 +1182,7 @@ static std::string buildDashboardHtml() {
         <button id="nav-simulation" class="nav-btn" onclick="switchTab('simulation')">Playoff Sim</button>
         <button id="nav-impact" class="nav-btn" onclick="switchTab('impact')">Game Importance</button>
         <button id="nav-sandbox" class="nav-btn" onclick="switchTab('sandbox')">What-If Sandbox</button>
+        <button id="nav-history" class="nav-btn" onclick="switchTab('history')">Contender History</button>
       </nav>
     </div>
   </header>
@@ -1300,6 +1358,54 @@ static std::string buildDashboardHtml() {
         </div>
       </div>
     </section>
+
+    <!-- HISTORY SECTION -->
+    <section id="history-section" class="view-section">
+      <div class="dashboard-header">
+        <div>
+          <h1 class="page-title">Contender Probability History</h1>
+          <p class="page-desc">Track how each team's probability of reaching the playoffs or winning the Super Bowl shifts week-by-week.</p>
+        </div>
+        <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+          <div id="history-rebuild-status" style="font-size: 0.9rem; color: var(--text-secondary);"></div>
+          <button id="btn-rebuild-history" class="btn btn-primary" onclick="rebuildHistoryData()">
+            <span id="rebuild-btn-text">Rebuild History (100k Sims)</span>
+          </button>
+        </div>
+      </div>
+      
+      <div class="control-panel" style="display: flex; gap: 1.5rem; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 1.5rem;">
+        <div class="segmented-control" style="display:inline-flex; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:8px; padding:0.25rem; gap:0.25rem;">
+          <button id="metric-playoffs-btn" class="nav-btn active" onclick="switchHistoryMetric('playoff')" style="font-size:0.85rem; padding:0.4rem 0.85rem">
+            Playoff Odds
+          </button>
+          <button id="metric-superbowl-btn" class="nav-btn" onclick="switchHistoryMetric('superbowl')" style="font-size:0.85rem; padding:0.4rem 0.85rem">
+            Super Bowl Odds
+          </button>
+        </div>
+        
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="selectQuickHistoryGroup('top5')">Reset to Top 5</button>
+          <button class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="selectQuickHistoryGroup('afc')">Select AFC</button>
+          <button class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="selectQuickHistoryGroup('nfc')">Select NFC</button>
+          <button class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="selectQuickHistoryGroup('all')">Select All</button>
+          <button class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="selectQuickHistoryGroup('none')">Clear</button>
+        </div>
+      </div>
+
+      <div class="card" style="padding: 1.5rem; margin-bottom: 2rem;">
+        <div style="position: relative; height: 450px; width: 100%; margin-bottom: 1.5rem;">
+          <canvas id="history-chart"></canvas>
+        </div>
+      </div>
+
+      <div class="card" style="padding: 1.5rem;">
+        <h3 class="card-title" style="margin-bottom: 1rem;">Filter Teams</h3>
+        <div id="history-teams-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem;">
+          <!-- Will be dynamically populated with conference/division sections -->
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- Modal -->
@@ -1358,6 +1464,12 @@ static std::string buildDashboardHtml() {
     let sandboxTabMode = "seeding"; // seeding or postseason
     let sandboxSelectedWeek = 1;
 
+    // History state variables
+    let historyChart = null;
+    let historyRawData = [];
+    let historyMetric = "playoff"; // "playoff" | "superbowl"
+    let historySelectedTeams = new Set();
+
     document.addEventListener("DOMContentLoaded", () => {
       // Sync numerical slider value formatted
       syncSliderVal(document.getElementById("simSlider").value);
@@ -1370,6 +1482,8 @@ static std::string buildDashboardHtml() {
         currentTab = "impact";
       } else if (path === "/sandbox") {
         currentTab = "sandbox";
+      } else if (path === "/history") {
+        currentTab = "history";
       } else {
         currentTab = "standings";
       }
@@ -1415,6 +1529,7 @@ static std::string buildDashboardHtml() {
       if (path === "/simulation") targetTab = "simulation";
       else if (path === "/impact") targetTab = "impact";
       else if (path === "/sandbox") targetTab = "sandbox";
+      else if (path === "/history") targetTab = "history";
       switchTab(targetTab, true);
     };
 
@@ -1431,6 +1546,8 @@ static std::string buildDashboardHtml() {
         fetchImpact();
       } else if (tabName === "sandbox") {
         fetchSandbox();
+      } else if (tabName === "history") {
+        fetchHistory();
       }
     }
 
@@ -2131,6 +2248,347 @@ static std::string buildDashboardHtml() {
         tbody.appendChild(row);
       });
     }
+
+    const teamColors = {
+      "ARI": "#97233F",
+      "ATL": "#A71930",
+      "BAL": "#241773",
+      "BUF": "#00338D",
+      "CAR": "#0085CA",
+      "CHI": "#0B162A",
+      "CIN": "#FB4F14",
+      "CLE": "#311D00",
+      "DAL": "#003566",
+      "DEN": "#FB4F14",
+      "DET": "#0076B6",
+      "GB": "#203731",
+      "HOU": "#03202F",
+      "IND": "#002C5F",
+      "JAX": "#006778",
+      "KC": "#E31837",
+      "LV": "#707070",
+      "LAC": "#0080C6",
+      "LA": "#003594",
+      "MIA": "#008E97",
+      "MIN": "#4F2683",
+      "NE": "#002244",
+      "NO": "#D3BC8D",
+      "NYG": "#0B2265",
+      "NYJ": "#125740",
+      "PHI": "#004C54",
+      "PIT": "#FFB612",
+      "SF": "#AA0000",
+      "SEA": "#002244",
+      "TB": "#D50A0A",
+      "TEN": "#4B92DB",
+      "WAS": "#5A1414"
+    };
+
+    function fetchHistory() {
+      const statusDiv = document.getElementById("history-rebuild-status");
+      statusDiv.textContent = "Loading history data...";
+      
+      Promise.all([
+        fetch("/api/probability-history").then(res => res.json()),
+        fetch("/api/standings").then(res => res.json())
+      ])
+      .then(([historyData, standingsData]) => {
+        statusDiv.textContent = "";
+        historyRawData = historyData;
+        
+        const teamsContainer = document.getElementById("history-teams-container");
+        if (teamsContainer.children.length === 0) {
+          renderHistoryFilters(standingsData);
+          selectQuickHistoryGroup("top5");
+        } else {
+          updateHistoryChart();
+        }
+      })
+      .catch(err => {
+        statusDiv.textContent = "Error loading history: " + err;
+      });
+    }
+
+    function renderHistoryFilters(standingsData) {
+      const container = document.getElementById("history-teams-container");
+      container.innerHTML = "";
+      
+      standingsData.divisions.forEach(div => {
+        const divCol = document.createElement("div");
+        divCol.style.display = "flex";
+        divCol.style.flexDirection = "column";
+        divCol.style.gap = "0.5rem";
+        
+        const divTitle = document.createElement("h4");
+        divTitle.style.fontFamily = "var(--font-display)";
+        divTitle.style.fontSize = "0.95rem";
+        divTitle.style.fontWeight = "700";
+        divTitle.style.color = "#cbd5e1";
+        divTitle.style.borderBottom = "1px solid var(--border-color)";
+        divTitle.style.paddingBottom = "0.25rem";
+        divTitle.textContent = div.name;
+        divCol.appendChild(divTitle);
+        
+        const teamList = document.createElement("div");
+        teamList.style.display = "flex";
+        teamList.style.flexWrap = "wrap";
+        teamList.style.gap = "0.4rem";
+        
+        div.teams.forEach(team => {
+          const btn = document.createElement("button");
+          btn.id = "history-toggle-" + team.abbr;
+          btn.className = "btn btn-secondary";
+          btn.style.padding = "0.3rem 0.6rem";
+          btn.style.fontSize = "0.8rem";
+          btn.style.fontWeight = "700";
+          btn.style.fontFamily = "var(--font-display)";
+          btn.style.background = "rgba(255,255,255,0.02)";
+          btn.style.borderColor = "var(--border-color)";
+          btn.style.color = "var(--text-secondary)";
+          btn.textContent = team.abbr;
+          
+          btn.onclick = () => {
+            toggleHistoryTeam(team.abbr);
+          };
+          
+          teamList.appendChild(btn);
+        });
+        
+        divCol.appendChild(teamList);
+        container.appendChild(divCol);
+      });
+    }
+
+    function toggleHistoryTeam(abbr) {
+      if (historySelectedTeams.has(abbr)) {
+        historySelectedTeams.delete(abbr);
+      } else {
+        historySelectedTeams.add(abbr);
+      }
+      updateHistoryTeamButtons();
+      updateHistoryChart();
+    }
+
+    function updateHistoryTeamButtons() {
+      document.querySelectorAll("[id^='history-toggle-']").forEach(btn => {
+        const abbr = btn.id.replace("history-toggle-", "");
+        if (historySelectedTeams.has(abbr)) {
+          const color = teamColors[abbr] || "#6366f1";
+          btn.style.background = color + "20";
+          btn.style.borderColor = color;
+          btn.style.color = "white";
+        } else {
+          btn.style.background = "rgba(255,255,255,0.02)";
+          btn.style.borderColor = "var(--border-color)";
+          btn.style.color = "var(--text-secondary)";
+        }
+      });
+    }
+
+    function selectQuickHistoryGroup(group) {
+      if (group === "all") {
+        historySelectedTeams = new Set(Object.keys(teamColors));
+      } else if (group === "none") {
+        historySelectedTeams.clear();
+      } else if (group === "afc" || group === "nfc") {
+        historySelectedTeams.clear();
+        document.querySelectorAll("[id^='history-toggle-']").forEach(btn => {
+          const abbr = btn.id.replace("history-toggle-", "");
+          const divHeaderElement = btn.closest("div").previousSibling;
+          if (divHeaderElement && divHeaderElement.textContent) {
+            const divHeader = divHeaderElement.textContent;
+            if (divHeader.startsWith(group.toUpperCase())) {
+              historySelectedTeams.add(abbr);
+            }
+          }
+        });
+      } else if (group === "top5") {
+        historySelectedTeams.clear();
+        let maxW = 0;
+        historyRawData.forEach(d => {
+          if (d.week > maxW) maxW = d.week;
+        });
+        
+        const latestPoints = historyRawData.filter(d => d.week === maxW);
+        const sorted = latestPoints.sort((a, b) => {
+          const valA = historyMetric === "playoff" ? a.playoff_prob : a.superbowl_prob;
+          const valB = historyMetric === "playoff" ? b.playoff_prob : b.superbowl_prob;
+          return valB - valA;
+        });
+        
+        for (let i = 0; i < 5 && i < sorted.length; ++i) {
+          historySelectedTeams.add(sorted[i].team);
+        }
+      }
+      
+      updateHistoryTeamButtons();
+      updateHistoryChart();
+    }
+
+    function switchHistoryMetric(metric) {
+      historyMetric = metric;
+      document.getElementById("metric-playoffs-btn").classList.toggle("active", metric === "playoff");
+      document.getElementById("metric-superbowl-btn").classList.toggle("active", metric === "superbowl");
+      updateHistoryChart();
+    }
+
+    function updateHistoryChart() {
+      const ctx = document.getElementById("history-chart").getContext("2d");
+      
+      const uniqueWeeks = [...new Set(historyRawData.map(d => d.week))].sort((a, b) => a - b);
+      const xLabels = uniqueWeeks.map(w => w === 0 ? "Pre-Season" : "Week " + w);
+      
+      const datasets = [];
+      
+      historySelectedTeams.forEach(abbr => {
+        const teamPoints = historyRawData.filter(d => d.team === abbr);
+        teamPoints.sort((a, b) => a.week - b.week);
+        
+        const dataValues = uniqueWeeks.map(w => {
+          const point = teamPoints.find(p => p.week === w);
+          if (!point) return 0;
+          return historyMetric === "playoff" ? point.playoff_prob * 100 : point.superbowl_prob * 100;
+        });
+        
+        const color = teamColors[abbr] || "#6366f1";
+        
+        datasets.push({
+          label: abbr,
+          data: dataValues,
+          borderColor: color,
+          backgroundColor: color + "10",
+          borderWidth: 3,
+          pointBackgroundColor: color,
+          pointBorderColor: "#161d30",
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          tension: 0.2,
+          fill: false
+        });
+      });
+      
+      let yMax = historyMetric === "playoff" ? 100 : 30;
+      let maxValInSelected = 0;
+      datasets.forEach(ds => {
+        ds.data.forEach(val => {
+          if (val > maxValInSelected) maxValInSelected = val;
+        });
+      });
+      if (maxValInSelected > 0) {
+        yMax = Math.min(100, Math.ceil(maxValInSelected / 10) * 10 + 5);
+      }
+      if (historyMetric === "playoff") {
+        yMax = 100;
+      }
+      
+      if (historyChart) {
+        historyChart.data.labels = xLabels;
+        historyChart.data.datasets = datasets;
+        historyChart.options.scales.y.max = yMax;
+        historyChart.update();
+      } else {
+        historyChart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: xLabels,
+            datasets: datasets
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: true,
+                position: "top",
+                labels: {
+                  color: "#94a3b8",
+                  font: {
+                    family: "Outfit",
+                    size: 12,
+                    weight: "600"
+                  },
+                  boxWidth: 15,
+                  padding: 15
+                }
+              },
+              tooltip: {
+                mode: "index",
+                intersect: false,
+                backgroundColor: "#161d30",
+                titleColor: "#f8fafc",
+                bodyColor: "#94a3b8",
+                borderColor: "rgba(255,255,255,0.08)",
+                borderWidth: 1,
+                callbacks: {
+                  label: function(context) {
+                    return ` ${context.dataset.label}: ${context.parsed.y.toFixed(1)}%`;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                grid: {
+                  color: "rgba(255, 255, 255, 0.04)"
+                },
+                ticks: {
+                  color: "#94a3b8",
+                  font: {
+                    family: "Inter",
+                    size: 11
+                  }
+                }
+              },
+              y: {
+                min: 0,
+                max: yMax,
+                grid: {
+                  color: "rgba(255, 255, 255, 0.04)"
+                },
+                ticks: {
+                  color: "#94a3b8",
+                  font: {
+                    family: "Inter",
+                    size: 11
+                  },
+                  callback: function(value) {
+                    return value + "%";
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+    }
+
+    function rebuildHistoryData() {
+      const btn = document.getElementById("btn-rebuild-history");
+      const btnText = document.getElementById("rebuild-btn-text");
+      const statusDiv = document.getElementById("history-rebuild-status");
+      
+      btn.disabled = true;
+      btnText.textContent = "Simulating & Rebuilding...";
+      statusDiv.textContent = "Running 100k simulations per completed week... This takes ~15-30 seconds.";
+      
+      fetch("/api/rebuild-probability-history", { method: "POST" })
+        .then(res => res.json())
+        .then(data => {
+          btn.disabled = false;
+          btnText.textContent = "Rebuild History (100k Sims)";
+          if (data.ok) {
+            statusDiv.textContent = "History successfully rebuilt!";
+            fetchHistory();
+          } else {
+            statusDiv.textContent = "Rebuild failed: " + data.error;
+          }
+        })
+        .catch(err => {
+          btn.disabled = false;
+          btnText.textContent = "Rebuild History (100k Sims)";
+          statusDiv.textContent = "Connection error: " + err;
+        });
+    }
   </script>
 </body>
 </html>)rawhtml";
@@ -2481,4 +2939,58 @@ std::string WebServer::buildHttpResponse(int statusCode,
         << "Connection: close\r\n\r\n"
         << body;
     return out.str();
+}
+
+void WebServer::rebuildProbabilityHistory(int iterations) {
+    // Determine the maximum week that has any completed game
+    int maxCompletedWeek = 0;
+    for (const auto& game : season_.allGames()) {
+        if (game.isFinal() && game.week() > maxCompletedWeek) {
+            maxCompletedWeek = game.week();
+        }
+    }
+
+    std::string historyPath = "data/probability_history.csv";
+    std::filesystem::path p(historyPath);
+    if (!p.parent_path().empty()) {
+        std::filesystem::create_directories(p.parent_path());
+    }
+    std::ofstream outFile(historyPath);
+    if (!outFile.is_open()) {
+        std::cerr << "Failed to open probability history file for writing: " << historyPath << std::endl;
+        return;
+    }
+
+    outFile << "week,team,playoff_prob,superbowl_prob\n";
+
+    // Loop through weeks from 0 to maxCompletedWeek
+    for (int w = 0; w <= maxCompletedWeek; ++w) {
+        // Construct a Season object where we only keep game results for weeks <= w
+        Season simSeason = season_;
+        std::vector<Game> simGames = simSeason.allGames();
+        for (auto& game : simGames) {
+            if (game.week() > w || !game.isFinal()) {
+                game = Game(game.week(), game.date(), game.homeTeam(), game.awayTeam(), 0, 0, "scheduled");
+            }
+        }
+        simSeason.replaceGames(simGames);
+        simSeason.computeStandings();
+
+        // Run Monte Carlo simulation on this historical state snapshot
+        MonteCarlo mc;
+        mc.setModelParameters(homeAdvantage_, strengthWeight_);
+        mc.loadHistoricalStrengths(simSeason, "data/historical");
+        
+        auto results = mc.simulate(simSeason, iterations, 12345);
+
+        for (const auto& [abbr, _] : simSeason.allTeams()) {
+            double playoffProb = results.playoffProbability.count(abbr) ? results.playoffProbability.at(abbr) : 0.0;
+            double superbowlProb = results.winSuperBowlProbability.count(abbr) ? results.winSuperBowlProbability.at(abbr) : 0.0;
+            outFile << w << "," << abbr << "," 
+                    << std::fixed << std::setprecision(6) << playoffProb << "," 
+                    << std::fixed << std::setprecision(6) << superbowlProb << "\n";
+        }
+    }
+    outFile.close();
+    std::cout << "Successfully rebuilt probability history up to week " << maxCompletedWeek << " using " << iterations << " iterations." << std::endl;
 }

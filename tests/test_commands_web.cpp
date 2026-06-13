@@ -195,5 +195,25 @@ TEST_CASE("WebServer API endpoints return expected payloads", "[web]") {
         REQUIRE(response.statusCode == 404);
     }
 
+    SECTION("GET /api/probability-history returns historical csv database as json") {
+        const auto response = server.handleForTests("GET", "/api/probability-history");
+        REQUIRE(response.statusCode == 200);
+        REQUIRE(response.contentType.find("application/json") != std::string::npos);
+        // It should contain records because the constructor automatically builds it if missing (using 10k iterations).
+        // Since we copied schedule to tempDir and set Cwd to source root, the file data/probability_history.csv is checked.
+        // Let's verify we get a JSON array.
+        REQUIRE(response.body.front() == '[');
+        REQUIRE(response.body.back() == ']');
+    }
+
+    SECTION("POST /api/rebuild-probability-history runs simulations and updates history") {
+        // Run with fewer iterations for the test by default if we want, but since rebuildProbabilityHistory inside the route
+        // uses 100k, we can mock it or let it run. Let's call it and ensure it responds with success.
+        // Wait, running 100k iterations for history rebuilding might take a few seconds, which is fine for tests.
+        const auto response = server.handleForTests("POST", "/api/rebuild-probability-history");
+        REQUIRE(response.statusCode == 200);
+        REQUIRE(response.body.find("\"ok\":true") != std::string::npos);
+    }
+
     std::filesystem::remove_all(tempDir);
 }

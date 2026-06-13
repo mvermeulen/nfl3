@@ -46,6 +46,8 @@ private:
     std::string simulationJson(int iterations, const std::string& locksStr = "") const;
     std::string impactJson(int iterations) const;
 
+    void rebuildProbabilityHistory(int iterations);
+
     bool applyResultUpdate(const std::string& body, std::string& error);
     bool persistSchedule() const;
 
