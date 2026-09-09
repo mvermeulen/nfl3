@@ -38,7 +38,8 @@ Notes:
 ## Web Endpoints
 
 - `GET /` and `GET /standings`: standings dashboard
-- `GET /games`: schedule/results dashboard with a per-week filter
+- `GET /games`: schedule/results dashboard with a per-week filter (`?week=<N>` optional)
+- `GET /teams` and `GET /teams/<ABBR>`: team list and per-team page with full schedule
 - `GET /simulation`: simulation dashboard (`?iterations=<N>` optional)
 - `GET /impact`: impact dashboard (`?iterations=<N>` optional)
 - `GET /sandbox`: simulation dashboard sandbox for what-if scenarios

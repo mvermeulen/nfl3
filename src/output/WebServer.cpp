@@ -258,6 +258,10 @@ std::string WebServer::handleRequest(const std::string& method,
         contentType = "text/html; charset=utf-8";
         return buildDashboardHtml();
     }
+    if (method == "GET" && (path == "/teams" || path.rfind("/teams/", 0) == 0)) {
+        contentType = "text/html; charset=utf-8";
+        return buildDashboardHtml();
+    }
     if (method == "GET" && path == "/history") {
         contentType = "text/html; charset=utf-8";
         return buildDashboardHtml();
@@ -760,6 +764,29 @@ static std::string buildDashboardHtml() {
       background: rgba(255,255,255,0.06);
     }
 
+    a.team-abbr-badge,
+    a.team-large-abbr,
+    a.week-link {
+      color: inherit;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    a.team-abbr-badge:hover {
+      background: rgba(99, 102, 241, 0.22);
+      color: #c7d2fe;
+    }
+
+    a.team-large-abbr:hover,
+    a.week-link:hover {
+      color: #a5b4fc;
+    }
+
+    .week-link {
+      font-weight: 700;
+    }
+
     tr:hover td {
       color: white;
     }
@@ -1184,6 +1211,7 @@ static std::string buildDashboardHtml() {
       <nav>
         <button id="nav-standings" class="nav-btn" onclick="switchTab('standings')">Standings</button>
         <button id="nav-games" class="nav-btn" onclick="switchTab('games')">Games</button>
+        <button id="nav-teams" class="nav-btn" onclick="teamsSelectedAbbr = null; switchTab('teams')">Teams</button>
         <button id="nav-simulation" class="nav-btn" onclick="switchTab('simulation')">Playoff Sim</button>
         <button id="nav-impact" class="nav-btn" onclick="switchTab('impact')">Game Importance</button>
         <button id="nav-sandbox" class="nav-btn" onclick="switchTab('sandbox')">What-If Sandbox</button>
@@ -1253,6 +1281,69 @@ static std::string buildDashboardHtml() {
             <!-- Dynamically populated rows -->
           </tbody>
         </table>
+      </div>
+    </section>
+
+    <!-- TEAMS SECTION -->
+    <section id="teams-section" class="view-section">
+      <div id="teams-list-view">
+        <div class="dashboard-header">
+          <div>
+            <h1 class="page-title">Teams</h1>
+            <p class="page-desc">All 32 franchises, grouped by conference and division. Select a team for its full schedule.</p>
+          </div>
+        </div>
+
+        <div id="teams-list-container" class="division-grid">
+          <!-- Dynamically populated team cards -->
+        </div>
+      </div>
+
+      <div id="team-detail-view" style="display:none">
+        <div class="dashboard-header">
+          <div>
+            <h1 id="team-detail-title" class="page-title">Team</h1>
+            <p id="team-detail-desc" class="page-desc"></p>
+          </div>
+          <button class="btn btn-secondary" onclick="teamsSelectedAbbr = null; switchTab('teams')">
+            &larr; All Teams
+          </button>
+        </div>
+
+        <div class="card" style="margin-bottom:1.5rem">
+          <h3 class="card-title" style="margin-bottom:1rem">Record</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>W</th>
+                <th>L</th>
+                <th>T</th>
+                <th>Win %</th>
+              </tr>
+            </thead>
+            <tbody id="team-detail-record">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title" style="margin-bottom:1rem">Full Schedule</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Week</th>
+                <th>Date</th>
+                <th>Opponent</th>
+                <th>Score</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="team-detail-schedule">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -1500,7 +1591,12 @@ static std::string buildDashboardHtml() {
 
     // Games tab state variables
     let gamesData = [];
-    let gamesSelectedWeek = 1;
+    let gamesSelectedWeek = null; // null = not yet determined (defaults to first unplayed week)
+    let gamesWeekExplicit = false; // true once a week is chosen deliberately (dropdown or a team-page link)
+
+    // Teams tab state variables
+    let teamsListData = null;
+    let teamsSelectedAbbr = null; // set for a /teams/<ABBR> detail view; null for the team list
 
     // Sandbox state variables
     let sandboxGames = [];
@@ -1519,27 +1615,44 @@ static std::string buildDashboardHtml() {
       // Sync numerical slider value formatted
       syncSliderVal(document.getElementById("simSlider").value);
 
-      // Determine initial tab from pathname or default
-      const path = window.location.pathname;
-      if (path === "/games") {
-        currentTab = "games";
-      } else if (path === "/simulation") {
-        currentTab = "simulation";
-      } else if (path === "/impact") {
-        currentTab = "impact";
-      } else if (path === "/sandbox") {
-        currentTab = "sandbox";
-      } else if (path === "/history") {
-        currentTab = "history";
-      } else {
-        currentTab = "standings";
-      }
-
+      currentTab = resolveRouteFromLocation();
       switchTab(currentTab, true);
     });
 
     function syncSliderVal(val) {
       document.getElementById("simVal").textContent = parseInt(val).toLocaleString();
+    }
+
+    // Reads window.location (path + query) and applies it to the relevant tab
+    // state, returning which tab it resolves to. Shared by the initial load
+    // and back/forward navigation.
+    function resolveRouteFromLocation() {
+      const path = window.location.pathname;
+
+      if (path === "/games") {
+        const weekParam = new URLSearchParams(window.location.search).get("week");
+        if (weekParam !== null) {
+          const parsedWeek = parseInt(weekParam, 10);
+          if (!isNaN(parsedWeek)) {
+            gamesSelectedWeek = parsedWeek;
+            gamesWeekExplicit = true;
+          }
+        }
+        return "games";
+      }
+      if (path === "/teams") {
+        teamsSelectedAbbr = null;
+        return "teams";
+      }
+      if (path.indexOf("/teams/") === 0) {
+        teamsSelectedAbbr = decodeURIComponent(path.substring("/teams/".length));
+        return "teams";
+      }
+      if (path === "/simulation") return "simulation";
+      if (path === "/impact") return "impact";
+      if (path === "/sandbox") return "sandbox";
+      if (path === "/history") return "history";
+      return "standings";
     }
 
     // Handles tab switching dynamically
@@ -1548,21 +1661,28 @@ static std::string buildDashboardHtml() {
 
       // Update URL path seamlessly
       if (!isInitial) {
-        window.history.pushState(null, '', '/' + (tabName === 'standings' ? 'standings' : tabName));
+        let url = '/' + (tabName === 'standings' ? 'standings' : tabName);
+        if (tabName === 'teams' && teamsSelectedAbbr) {
+          url = '/teams/' + teamsSelectedAbbr;
+        } else if (tabName === 'games' && gamesWeekExplicit && gamesSelectedWeek) {
+          url = '/games?week=' + gamesSelectedWeek;
+        }
+        window.history.pushState(null, '', url);
       }
 
-      // Update Nav buttons
+      activateSection(tabName);
+      loadData(tabName);
+    }
+
+    // Shows the nav button + view-section for a tab without touching the URL.
+    function activateSection(tabName) {
       document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.remove("active"));
       const activeNav = document.getElementById("nav-" + tabName);
       if (activeNav) activeNav.classList.add("active");
 
-      // Update visible sections
       document.querySelectorAll(".view-section").forEach(sec => sec.classList.remove("active"));
       const activeSec = document.getElementById(tabName + "-section");
       if (activeSec) activeSec.classList.add("active");
-
-      // Load data
-      loadData(tabName);
     }
 
     function handleLogoClick(e) {
@@ -1571,15 +1691,28 @@ static std::string buildDashboardHtml() {
     }
 
     window.onpopstate = () => {
-      const path = window.location.pathname;
-      let targetTab = "standings";
-      if (path === "/games") targetTab = "games";
-      else if (path === "/simulation") targetTab = "simulation";
-      else if (path === "/impact") targetTab = "impact";
-      else if (path === "/sandbox") targetTab = "sandbox";
-      else if (path === "/history") targetTab = "history";
-      switchTab(targetTab, true);
+      switchTab(resolveRouteFromLocation(), true);
     };
+
+    // Navigates to a team's detail page (used by team-name links throughout the app).
+    function navigateToTeam(abbr) {
+      teamsSelectedAbbr = abbr;
+      switchTab('teams');
+    }
+
+    // Navigates to the Games page pre-filtered to a specific week (used by
+    // week-number links on a team's schedule).
+    function navigateToGamesWeek(week) {
+      gamesSelectedWeek = week;
+      gamesWeekExplicit = true;
+      switchTab('games');
+    }
+
+    // Renders a team abbreviation as a link to its team page.
+    function teamLink(abbr, cssClass = "team-abbr-badge", style = "") {
+      const styleAttr = style ? ` style="${style}"` : "";
+      return `<a href="/teams/${abbr}" class="${cssClass}"${styleAttr} onclick="event.preventDefault(); navigateToTeam('${abbr}')">${abbr}</a>`;
+    }
 
     // Client-side API fetch
     function loadData(tabName) {
@@ -1587,6 +1720,8 @@ static std::string buildDashboardHtml() {
         fetchStandings();
       } else if (tabName === "games") {
         fetchGames();
+      } else if (tabName === "teams") {
+        fetchTeamsTab();
       } else if (tabName === "simulation") {
         const simResults = document.getElementById("sim-results-card");
         if (simResults.style.display === "none") {
@@ -1621,7 +1756,7 @@ static std::string buildDashboardHtml() {
               tableRows += `
                 <tr class="${isLeader ? 'playoff-row-highlight' : ''}">
                   <td>
-                    <span class="team-abbr-badge">${team.abbr}</span>
+                    ${teamLink(team.abbr)}
                   </td>
                   <td style="text-align:center">${team.wins}</td>
                   <td style="text-align:center">${team.losses}</td>
@@ -1703,7 +1838,7 @@ static std::string buildDashboardHtml() {
           const row = document.createElement("tr");
           row.innerHTML = `
             <td>
-              <span class="team-abbr-badge" style="font-size:0.9rem">${team.abbr}</span>
+              ${teamLink(team.abbr, "team-abbr-badge", "font-size:0.9rem")}
             </td>
             <td>
               <div class="progress-container">
@@ -1741,7 +1876,7 @@ static std::string buildDashboardHtml() {
           const row = document.createElement("tr");
           row.innerHTML = `
             <td>
-              <span class="team-abbr-badge" style="font-size:0.9rem">${team.abbr}</span>
+              ${teamLink(team.abbr, "team-abbr-badge", "font-size:0.9rem")}
             </td>
             <td>
               <div class="progress-container">
@@ -1833,12 +1968,12 @@ static std::string buildDashboardHtml() {
               </div>
               <div class="matchup-body">
                 <div class="matchup-team">
-                  <span class="team-large-abbr">${game.home}</span>
+                  ${teamLink(game.home, "team-large-abbr")}
                   <span style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.25rem">Home</span>
                 </div>
                 <div class="vs-text">VS</div>
                 <div class="matchup-team">
-                  <span class="team-large-abbr">${game.away}</span>
+                  ${teamLink(game.away, "team-large-abbr")}
                   <span style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.25rem">Away</span>
                 </div>
               </div>
@@ -1984,6 +2119,7 @@ static std::string buildDashboardHtml() {
 
     function fetchGames() {
       if (gamesData.length > 0) {
+        document.getElementById("gamesWeekSelect").value = gamesSelectedWeek;
         renderGamesTable();
         return;
       }
@@ -2010,8 +2146,10 @@ static std::string buildDashboardHtml() {
             weekSelect.appendChild(opt);
           });
 
-          const firstUnplayedGame = gamesData.find(g => g.status !== "final" && g.status !== "in_progress");
-          gamesSelectedWeek = firstUnplayedGame ? firstUnplayedGame.week : (uniqueWeeks[0] || 1);
+          if (!gamesWeekExplicit || gamesSelectedWeek === null || !uniqueWeeks.includes(gamesSelectedWeek)) {
+            const firstUnplayedGame = gamesData.find(g => g.status !== "final" && g.status !== "in_progress");
+            gamesSelectedWeek = firstUnplayedGame ? firstUnplayedGame.week : (uniqueWeeks[0] || 1);
+          }
           weekSelect.value = gamesSelectedWeek;
 
           renderGamesTable();
@@ -2025,6 +2163,7 @@ static std::string buildDashboardHtml() {
 
     function changeGamesWeek(week) {
       gamesSelectedWeek = parseInt(week);
+      gamesWeekExplicit = true;
       renderGamesTable();
     }
 
@@ -2051,12 +2190,152 @@ static std::string buildDashboardHtml() {
         const row = document.createElement("tr");
         row.innerHTML = `
           <td>${game.date}</td>
-          <td><span class="team-abbr-badge">${game.away_team}</span></td>
-          <td><span class="team-abbr-badge">${game.home_team}</span></td>
+          <td>${teamLink(game.away_team)}</td>
+          <td>${teamLink(game.home_team)}</td>
           <td>${score}</td>
           <td style="color:${statusColor};font-weight:600;text-transform:capitalize">${game.status}</td>
         `;
         tbody.appendChild(row);
+      });
+    }
+
+    function fetchTeamsTab() {
+      if (teamsSelectedAbbr) {
+        showTeamDetail(teamsSelectedAbbr);
+      } else {
+        showTeamsList();
+      }
+    }
+
+    function showTeamsList() {
+      document.getElementById("teams-list-view").style.display = "block";
+      document.getElementById("team-detail-view").style.display = "none";
+
+      if (teamsListData) {
+        renderTeamsList();
+        return;
+      }
+
+      const container = document.getElementById("teams-list-container");
+      container.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:4rem;"><div class="spinner" style="margin:0 auto 1rem auto"></div>Loading teams...</div>`;
+
+      fetch("/api/standings")
+        .then(res => res.json())
+        .then(data => {
+          teamsListData = data;
+          renderTeamsList();
+        })
+        .catch(err => {
+          container.innerHTML = `<div style="grid-column:1/-1;color:var(--danger-color);padding:2rem;">Failed to load teams: ${err}</div>`;
+        });
+    }
+
+    function renderTeamsList() {
+      const container = document.getElementById("teams-list-container");
+      container.innerHTML = "";
+
+      teamsListData.divisions.forEach(div => {
+        const card = document.createElement("div");
+        card.className = "card";
+
+        let rows = "";
+        div.teams.forEach(team => {
+          rows += `
+            <tr>
+              <td>${teamLink(team.abbr)}</td>
+              <td>${team.full_name}</td>
+              <td style="text-align:right;color:var(--text-secondary)">${team.wins}-${team.losses}${team.ties ? '-' + team.ties : ''}</td>
+            </tr>
+          `;
+        });
+
+        card.innerHTML = `
+          <h3 class="card-title" style="margin-bottom:1rem"><span>${div.name}</span></h3>
+          <table>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function showTeamDetail(abbr) {
+      document.getElementById("teams-list-view").style.display = "none";
+      document.getElementById("team-detail-view").style.display = "block";
+
+      document.getElementById("team-detail-title").textContent = abbr;
+      document.getElementById("team-detail-desc").textContent = "";
+      document.getElementById("team-detail-record").innerHTML = `<tr><td colspan="4" style="text-align:center;padding:2rem;"><div class="spinner" style="margin:0 auto"></div></td></tr>`;
+      document.getElementById("team-detail-schedule").innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;"><div class="spinner" style="margin:0 auto"></div></td></tr>`;
+
+      Promise.all([
+        fetch("/api/standings").then(res => res.json()),
+        fetch("/api/games").then(res => res.json())
+      ]).then(([standings, gamesResp]) => {
+        let teamMeta = null;
+        let divisionName = "";
+        standings.divisions.forEach(div => {
+          div.teams.forEach(t => {
+            if (t.abbr === abbr) {
+              teamMeta = t;
+              divisionName = div.name;
+            }
+          });
+        });
+
+        if (!teamMeta) {
+          document.getElementById("team-detail-title").textContent = "Team not found";
+          document.getElementById("team-detail-record").innerHTML = "";
+          document.getElementById("team-detail-schedule").innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--danger-color);padding:2rem;">Unknown team "${abbr}".</td></tr>`;
+          return;
+        }
+
+        document.getElementById("team-detail-title").textContent = teamMeta.full_name;
+        document.getElementById("team-detail-desc").textContent = `${divisionName} — ${abbr}`;
+
+        const winPctStr = (teamMeta.win_pct * 100).toFixed(1) + "%";
+        document.getElementById("team-detail-record").innerHTML = `
+          <tr>
+            <td>${teamMeta.wins}</td>
+            <td>${teamMeta.losses}</td>
+            <td>${teamMeta.ties}</td>
+            <td>${winPctStr}</td>
+          </tr>
+        `;
+
+        const teamGames = gamesResp.games
+          .filter(g => g.home_team === abbr || g.away_team === abbr)
+          .sort((a, b) => a.week - b.week);
+
+        const scheduleTbody = document.getElementById("team-detail-schedule");
+        scheduleTbody.innerHTML = "";
+
+        if (teamGames.length === 0) {
+          scheduleTbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-secondary)">No games scheduled.</td></tr>`;
+          return;
+        }
+
+        teamGames.forEach(game => {
+          const isHome = game.home_team === abbr;
+          const opponent = isHome ? game.away_team : game.home_team;
+          const played = game.status === "final" || game.status === "in_progress";
+          const score = played ? `${game.away_score} - ${game.home_score}` : "-";
+          const statusColor = game.status === "final" ? "var(--success-color)"
+            : game.status === "in_progress" ? "var(--warning-color)"
+            : "var(--text-secondary)";
+
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td><a class="week-link" href="/games?week=${game.week}" onclick="event.preventDefault(); navigateToGamesWeek(${game.week})">${game.week}</a></td>
+            <td>${game.date}</td>
+            <td>${isHome ? 'vs' : '@'} ${teamLink(opponent)}</td>
+            <td>${score}</td>
+            <td style="color:${statusColor};font-weight:600;text-transform:capitalize">${game.status}</td>
+          `;
+          scheduleTbody.appendChild(row);
+        });
+      }).catch(err => {
+        document.getElementById("team-detail-schedule").innerHTML = `<tr><td colspan="5" style="color:var(--danger-color);text-align:center">Failed to load team schedule: ${err}</td></tr>`;
       });
     }
 
@@ -2333,7 +2612,7 @@ static std::string buildDashboardHtml() {
           else if (team.playoff <= 0.3) progressClass = "prog-rose";
 
           row.innerHTML = `
-            <td><span class="team-abbr-badge">${team.abbr}</span></td>
+            <td>${teamLink(team.abbr)}</td>
             <td>
               <div class="progress-container">
                 <div class="progress-bar-bg" style="width: 55px">
@@ -2357,7 +2636,7 @@ static std::string buildDashboardHtml() {
           else if (team.win_superbowl <= 0.01) progressClass = "prog-rose";
 
           row.innerHTML = `
-            <td><span class="team-abbr-badge">${team.abbr}</span></td>
+            <td>${teamLink(team.abbr)}</td>
             <td>
               <div class="progress-container">
                 <div class="progress-bar-bg" style="width: 55px">
@@ -2757,6 +3036,7 @@ std::string WebServer::standingsJson() const {
             }
             firstTeam = false;
             out << "{\"abbr\":\"" << jsonEscape(team->abbreviation())
+                << "\",\"full_name\":\"" << jsonEscape(team->fullName())
                 << "\",\"wins\":" << team->wins()
                 << ",\"losses\":" << team->losses()
                 << ",\"ties\":" << team->ties()
