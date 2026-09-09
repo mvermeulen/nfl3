@@ -652,6 +652,10 @@ Season MonteCarlo::forceGameOutcome(const Season& season,
     }
 
     forcedSeason.replaceGames(updatedGames);
+    // Recompute standings so the forced result is reflected in team records
+    // (wins/losses/point differential) used to project each team's *other*
+    // remaining games — otherwise the forced win/loss doesn't propagate.
+    forcedSeason.computeStandings();
     return forcedSeason;
 }
 

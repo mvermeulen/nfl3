@@ -200,6 +200,8 @@ private:
 
     /**
      * Build a season copy with one scheduled game forced to a final outcome.
+     * Standings are recomputed on the copy so the forced result is reflected
+     * in team records before projecting the rest of the season.
      */
     Season forceGameOutcome(const Season& season,
                             const Game& targetGame,
