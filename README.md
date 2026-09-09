@@ -14,6 +14,7 @@ cmake --build build
 
 ```bash
 ./build/nfl3 status
+./build/nfl3 games [week]
 ./build/nfl3 simulate 100000
 ./build/nfl3 impact 100000
 ./build/nfl3 load-schedule /path/to/schedule.csv
@@ -25,6 +26,7 @@ cmake --build build
 
 Notes:
 
+- `games [week]` prints the schedule/results for a single week, or every week if omitted.
 - `load-schedule` validates required columns and writes canonical schedule data to `data/schedule.csv`.
 - `calibration-report <START> <END>` prints a year-by-year table of fitted logistic calibration metrics (Brier score and log loss) over the requested historical range.
 - The calibration work also tested a prior-season point-differential signal, but it did not improve Brier score or log loss and was removed from the current prediction path.

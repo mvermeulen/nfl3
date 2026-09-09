@@ -21,6 +21,7 @@ const std::string DEFAULT_MODEL_COEFFS_PATH = "data/model_coefficients.csv";
 void printUsage() {
     std::cerr << "Usage:\n"
               << "  ./nfl3 status\n"
+              << "  ./nfl3 games [week]\n"
               << "  ./nfl3 simulate [iterations]\n"
               << "  ./nfl3 impact [iterations]\n"
               << "  ./nfl3 load-schedule <path>\n"
@@ -157,6 +158,13 @@ int main(int argc, char* argv[]) {
             season.computeStandings();
             AsciiPrinter::printAllStandings(season);
             std::cout << "Standings computed successfully!" << std::endl;
+        } else if (command == "games") {
+            if (argc > 2) {
+                int week = std::stoi(argv[2]);
+                AsciiPrinter::printWeekGames(season, week);
+            } else {
+                AsciiPrinter::printAllGames(season);
+            }
         } else if (command == "simulate") {
             int iterations = 100000;
             if (argc > 2) {

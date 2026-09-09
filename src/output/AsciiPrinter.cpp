@@ -69,6 +69,64 @@ void AsciiPrinter::printAllStandings(const Season& season) {
     std::cout << std::endl;
 }
 
+void AsciiPrinter::printWeekGames(const Season& season, int week) {
+    std::cout << "\n==== WEEK " << week << " GAMES ====\n" << std::endl;
+
+    std::cout << std::left << std::setw(12) << "Date"
+              << std::setw(23) << "Matchup"
+              << std::setw(10) << "Score"
+              << "Status" << std::endl;
+    printSeparator(65);
+
+    bool any = false;
+    for (const auto& game : season.allGames()) {
+        if (game.week() != week) {
+            continue;
+        }
+        any = true;
+        printGameRow(game);
+    }
+
+    if (!any) {
+        std::cout << "No games found for week " << week << "." << std::endl;
+    }
+    std::cout << std::endl;
+}
+
+void AsciiPrinter::printAllGames(const Season& season) {
+    int currentWeek = -1;
+    for (const auto& game : season.allGames()) {
+        if (game.week() != currentWeek) {
+            currentWeek = game.week();
+            std::cout << "\n==== WEEK " << currentWeek << " GAMES ====\n" << std::endl;
+            std::cout << std::left << std::setw(12) << "Date"
+                      << std::setw(23) << "Matchup"
+                      << std::setw(10) << "Score"
+                      << "Status" << std::endl;
+            printSeparator(65);
+        }
+        printGameRow(game);
+    }
+    std::cout << std::endl;
+}
+
+void AsciiPrinter::printGameRow(const Game& game) {
+    std::ostringstream matchup;
+    matchup << game.awayTeam() << " @ " << game.homeTeam();
+
+    std::ostringstream score;
+    if (game.isPlayed()) {
+        score << game.awayScore() << "-" << game.homeScore();
+    } else {
+        score << "-";
+    }
+
+    std::cout << std::left << std::setw(12) << game.date()
+              << std::setw(23) << matchup.str()
+              << std::setw(10) << score.str()
+              << game.status() << std::endl;
+}
+
 void AsciiPrinter::printSeparator(int width) {
     for (int i = 0; i < width; ++i) {
         std::cout << "-";

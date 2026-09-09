@@ -20,7 +20,22 @@ public:
      */
     static void printAllStandings(const Season& season);
 
+    /**
+     * Print the schedule/results for a single week to stdout.
+     */
+    static void printWeekGames(const Season& season, int week);
+
+    /**
+     * Print the schedule/results for every week to stdout.
+     */
+    static void printAllGames(const Season& season);
+
 private:
+    /**
+     * Print a single game row (date, matchup, score, status).
+     */
+    static void printGameRow(const Game& game);
+
     /**
      * Print a horizontal separator line.
      */
