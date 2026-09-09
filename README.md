@@ -40,6 +40,7 @@ Notes:
 - `GET /` and `GET /standings`: standings dashboard
 - `GET /games`: schedule/results dashboard with a per-week filter (`?week=<N>` optional)
 - `GET /teams` and `GET /teams/<ABBR>`: team list and per-team page with full schedule
+  - The team page's "Calculate Importance" button computes, for each of that team's remaining games, how much winning vs. losing it alone swings the team's playoff probability (two locked Monte Carlo runs per game via `/api/simulation`). It's opt-in behind a button rather than automatic, since it costs a handful of simulation runs per remaining game.
 - `GET /simulation`: simulation dashboard (`?iterations=<N>` optional)
 - `GET /impact`: impact dashboard (`?iterations=<N>` optional)
 - `GET /sandbox`: simulation dashboard sandbox for what-if scenarios

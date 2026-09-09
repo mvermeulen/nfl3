@@ -1328,7 +1328,12 @@ static std::string buildDashboardHtml() {
         </div>
 
         <div class="card">
-          <h3 class="card-title" style="margin-bottom:1rem">Full Schedule</h3>
+          <h3 class="card-title">
+            <span>Full Schedule</span>
+            <button id="team-importance-btn" class="btn btn-secondary" style="font-size:0.8rem;padding:0.4rem 0.8rem" onclick="calculateTeamImportance()">
+              Calculate Importance
+            </button>
+          </h3>
           <table>
             <thead>
               <tr>
@@ -1337,6 +1342,7 @@ static std::string buildDashboardHtml() {
                 <th>Opponent</th>
                 <th>Score</th>
                 <th>Status</th>
+                <th>Importance</th>
               </tr>
             </thead>
             <tbody id="team-detail-schedule">
@@ -2266,7 +2272,11 @@ static std::string buildDashboardHtml() {
       document.getElementById("team-detail-title").textContent = abbr;
       document.getElementById("team-detail-desc").textContent = "";
       document.getElementById("team-detail-record").innerHTML = `<tr><td colspan="4" style="text-align:center;padding:2rem;"><div class="spinner" style="margin:0 auto"></div></td></tr>`;
-      document.getElementById("team-detail-schedule").innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;"><div class="spinner" style="margin:0 auto"></div></td></tr>`;
+      document.getElementById("team-detail-schedule").innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem;"><div class="spinner" style="margin:0 auto"></div></td></tr>`;
+
+      const importanceBtn = document.getElementById("team-importance-btn");
+      importanceBtn.disabled = false;
+      importanceBtn.textContent = "Calculate Importance";
 
       Promise.all([
         fetch("/api/standings").then(res => res.json()),
@@ -2286,7 +2296,7 @@ static std::string buildDashboardHtml() {
         if (!teamMeta) {
           document.getElementById("team-detail-title").textContent = "Team not found";
           document.getElementById("team-detail-record").innerHTML = "";
-          document.getElementById("team-detail-schedule").innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--danger-color);padding:2rem;">Unknown team "${abbr}".</td></tr>`;
+          document.getElementById("team-detail-schedule").innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--danger-color);padding:2rem;">Unknown team "${abbr}".</td></tr>`;
           return;
         }
 
@@ -2311,7 +2321,7 @@ static std::string buildDashboardHtml() {
         scheduleTbody.innerHTML = "";
 
         if (teamGames.length === 0) {
-          scheduleTbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-secondary)">No games scheduled.</td></tr>`;
+          scheduleTbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-secondary)">No games scheduled.</td></tr>`;
           return;
         }
 
@@ -2325,18 +2335,91 @@ static std::string buildDashboardHtml() {
             : "var(--text-secondary)";
 
           const row = document.createElement("tr");
+          row.dataset.week = game.week;
+          row.dataset.home = game.home_team;
+          row.dataset.away = game.away_team;
+          row.dataset.played = played;
           row.innerHTML = `
             <td><a class="week-link" href="/games?week=${game.week}" onclick="event.preventDefault(); navigateToGamesWeek(${game.week})">${game.week}</a></td>
             <td>${game.date}</td>
             <td>${isHome ? 'vs' : '@'} ${teamLink(opponent)}</td>
             <td>${score}</td>
             <td style="color:${statusColor};font-weight:600;text-transform:capitalize">${game.status}</td>
+            <td class="importance-cell" style="color:var(--text-secondary)">${played ? '—' : ''}</td>
           `;
           scheduleTbody.appendChild(row);
         });
       }).catch(err => {
-        document.getElementById("team-detail-schedule").innerHTML = `<tr><td colspan="5" style="color:var(--danger-color);text-align:center">Failed to load team schedule: ${err}</td></tr>`;
+        document.getElementById("team-detail-schedule").innerHTML = `<tr><td colspan="6" style="color:var(--danger-color);text-align:center">Failed to load team schedule: ${err}</td></tr>`;
       });
+    }
+
+    // Runs two locked simulations per unplayed game on a team's schedule (forcing
+    // that team to win, then to lose) and shows the swing in the team's own
+    // playoff probability as an "Importance" score. Deliberately button-gated:
+    // it's 2 Monte Carlo runs per remaining game, run one at a time against the
+    // single-threaded backend, so it can take a few seconds for a long schedule.
+    const TEAM_IMPORTANCE_ITERATIONS = 3000;
+
+    async function calculateTeamImportance() {
+      const abbr = teamsSelectedAbbr;
+      if (!abbr) return;
+
+      const btn = document.getElementById("team-importance-btn");
+      const rows = [...document.querySelectorAll("#team-detail-schedule tr")]
+        .filter(row => row.dataset.played === "false");
+
+      if (rows.length === 0) {
+        btn.textContent = "No Upcoming Games";
+        btn.disabled = true;
+        return;
+      }
+
+      btn.disabled = true;
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        btn.textContent = `Calculating ${i + 1}/${rows.length}...`;
+
+        const cell = row.querySelector(".importance-cell");
+        cell.innerHTML = `<span style="color:var(--text-secondary)">...</span>`;
+
+        const week = row.dataset.week;
+        const home = row.dataset.home;
+        const away = row.dataset.away;
+        const teamIsHome = home === abbr;
+
+        try {
+          const [ifWin, ifLose] = await Promise.all([
+            fetchLockedPlayoffProb(week, home, away, teamIsHome ? "home" : "away", abbr),
+            fetchLockedPlayoffProb(week, home, away, teamIsHome ? "away" : "home", abbr)
+          ]);
+
+          const swing = Math.abs(ifWin - ifLose) * 100;
+          let color = "var(--text-secondary)";
+          if (swing >= 15) color = "var(--danger-color)";
+          else if (swing >= 5) color = "var(--warning-color)";
+
+          cell.innerHTML = `<span style="color:${color};font-weight:700">${swing.toFixed(1)}%</span>`;
+        } catch (err) {
+          cell.innerHTML = `<span style="color:var(--danger-color)">Error</span>`;
+        }
+      }
+
+      btn.textContent = "Recalculate Importance";
+      btn.disabled = false;
+    }
+
+    // Runs one locked simulation and returns a single team's resulting playoff probability.
+    function fetchLockedPlayoffProb(week, home, away, winner, targetAbbr) {
+      const locks = `${week}:${home}:${away}:${winner}`;
+      const url = `/api/simulation?iterations=${TEAM_IMPORTANCE_ITERATIONS}&locks=${encodeURIComponent(locks)}`;
+      return fetch(url)
+        .then(res => res.json())
+        .then(data => {
+          const team = data.teams.find(t => t.abbr === targetAbbr);
+          return team ? team.playoff : 0;
+        });
     }
 
     function fetchSandbox() {
