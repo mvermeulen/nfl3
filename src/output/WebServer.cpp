@@ -254,6 +254,10 @@ std::string WebServer::handleRequest(const std::string& method,
         contentType = "text/html; charset=utf-8";
         return renderSimulationHtml(defaultIterations_);
     }
+    if (method == "GET" && path == "/games") {
+        contentType = "text/html; charset=utf-8";
+        return buildDashboardHtml();
+    }
     if (method == "GET" && path == "/history") {
         contentType = "text/html; charset=utf-8";
         return buildDashboardHtml();
@@ -1179,6 +1183,7 @@ static std::string buildDashboardHtml() {
       </a>
       <nav>
         <button id="nav-standings" class="nav-btn" onclick="switchTab('standings')">Standings</button>
+        <button id="nav-games" class="nav-btn" onclick="switchTab('games')">Games</button>
         <button id="nav-simulation" class="nav-btn" onclick="switchTab('simulation')">Playoff Sim</button>
         <button id="nav-impact" class="nav-btn" onclick="switchTab('impact')">Game Importance</button>
         <button id="nav-sandbox" class="nav-btn" onclick="switchTab('sandbox')">What-If Sandbox</button>
@@ -1212,6 +1217,42 @@ static std::string buildDashboardHtml() {
 
       <div id="standings-container" class="division-grid">
         <!-- Division Cards loaded dynamically -->
+      </div>
+    </section>
+
+    <!-- GAMES SECTION -->
+    <section id="games-section" class="view-section">
+      <div class="dashboard-header">
+        <div>
+          <h1 class="page-title">Schedule &amp; Results</h1>
+          <p class="page-desc">Browse each week's matchups, scores, and status.</p>
+        </div>
+      </div>
+
+      <div class="control-panel" style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin-bottom:1.5rem">
+        <div style="display:flex;align-items:center;gap:0.75rem">
+          <span class="form-label" style="margin-bottom:0">Week:</span>
+          <select id="gamesWeekSelect" class="form-input" style="width:auto;padding:0.4rem 2rem 0.4rem 1rem" onchange="changeGamesWeek(this.value)">
+            <!-- Dynamically populated weeks -->
+          </select>
+        </div>
+      </div>
+
+      <div class="card">
+        <table id="games-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Away</th>
+              <th>Home</th>
+              <th>Score</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="games-tbody">
+            <!-- Dynamically populated rows -->
+          </tbody>
+        </table>
       </div>
     </section>
 
@@ -1457,6 +1498,10 @@ static std::string buildDashboardHtml() {
     // Global active states
     let currentTab = "standings";
 
+    // Games tab state variables
+    let gamesData = [];
+    let gamesSelectedWeek = 1;
+
     // Sandbox state variables
     let sandboxGames = [];
     let sandboxBaseOdds = null;
@@ -1476,7 +1521,9 @@ static std::string buildDashboardHtml() {
 
       // Determine initial tab from pathname or default
       const path = window.location.pathname;
-      if (path === "/simulation") {
+      if (path === "/games") {
+        currentTab = "games";
+      } else if (path === "/simulation") {
         currentTab = "simulation";
       } else if (path === "/impact") {
         currentTab = "impact";
@@ -1526,7 +1573,8 @@ static std::string buildDashboardHtml() {
     window.onpopstate = () => {
       const path = window.location.pathname;
       let targetTab = "standings";
-      if (path === "/simulation") targetTab = "simulation";
+      if (path === "/games") targetTab = "games";
+      else if (path === "/simulation") targetTab = "simulation";
       else if (path === "/impact") targetTab = "impact";
       else if (path === "/sandbox") targetTab = "sandbox";
       else if (path === "/history") targetTab = "history";
@@ -1537,6 +1585,8 @@ static std::string buildDashboardHtml() {
     function loadData(tabName) {
       if (tabName === "standings") {
         fetchStandings();
+      } else if (tabName === "games") {
+        fetchGames();
       } else if (tabName === "simulation") {
         const simResults = document.getElementById("sim-results-card");
         if (simResults.style.display === "none") {
@@ -1931,6 +1981,84 @@ static std::string buildDashboardHtml() {
 
     // What-If Scenario Sandbox Logic
     let lastSandboxSimData = null;
+
+    function fetchGames() {
+      if (gamesData.length > 0) {
+        renderGamesTable();
+        return;
+      }
+
+      document.getElementById("games-tbody").innerHTML = `
+        <tr><td colspan="5" style="text-align:center;padding:4rem;">
+          <div class="spinner" style="margin:0 auto 1rem auto"></div>
+          Loading schedule...
+        </td></tr>
+      `;
+
+      fetch("/api/games")
+        .then(res => res.json())
+        .then(data => {
+          gamesData = data.games;
+
+          const weekSelect = document.getElementById("gamesWeekSelect");
+          weekSelect.innerHTML = "";
+          const uniqueWeeks = [...new Set(gamesData.map(g => g.week))].sort((a, b) => a - b);
+          uniqueWeeks.forEach(w => {
+            const opt = document.createElement("option");
+            opt.value = w;
+            opt.textContent = "Week " + w;
+            weekSelect.appendChild(opt);
+          });
+
+          const firstUnplayedGame = gamesData.find(g => g.status !== "final" && g.status !== "in_progress");
+          gamesSelectedWeek = firstUnplayedGame ? firstUnplayedGame.week : (uniqueWeeks[0] || 1);
+          weekSelect.value = gamesSelectedWeek;
+
+          renderGamesTable();
+        })
+        .catch(err => {
+          document.getElementById("games-tbody").innerHTML = `
+            <tr><td colspan="5" style="color:var(--danger-color);text-align:center">Failed to load schedule: ${err}</td></tr>
+          `;
+        });
+    }
+
+    function changeGamesWeek(week) {
+      gamesSelectedWeek = parseInt(week);
+      renderGamesTable();
+    }
+
+    function renderGamesTable() {
+      const tbody = document.getElementById("games-tbody");
+      tbody.innerHTML = "";
+
+      const games = gamesData
+        .filter(g => g.week === gamesSelectedWeek)
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      if (games.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-secondary)">No games in this week.</td></tr>`;
+        return;
+      }
+
+      games.forEach(game => {
+        const played = game.status === "final" || game.status === "in_progress";
+        const score = played ? `${game.away_score} - ${game.home_score}` : "-";
+        const statusColor = game.status === "final" ? "var(--success-color)"
+          : game.status === "in_progress" ? "var(--warning-color)"
+          : "var(--text-secondary)";
+
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${game.date}</td>
+          <td><span class="team-abbr-badge">${game.away_team}</span></td>
+          <td><span class="team-abbr-badge">${game.home_team}</span></td>
+          <td>${score}</td>
+          <td style="color:${statusColor};font-weight:600;text-transform:capitalize">${game.status}</td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
 
     function fetchSandbox() {
       if (sandboxGames.length > 0 && sandboxBaseOdds) {
