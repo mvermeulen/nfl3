@@ -787,6 +787,29 @@ static std::string buildDashboardHtml() {
       font-weight: 700;
     }
 
+    .record-score-link {
+      display: inline-block;
+      color: #a5b4fc;
+      font-weight: 600;
+      font-size: 0.8rem;
+      text-decoration: none;
+      cursor: pointer;
+      padding: 0.2rem 0.55rem;
+      border-radius: 4px;
+      background: rgba(99, 102, 241, 0.12);
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .record-score-link:hover {
+      background: rgba(99, 102, 241, 0.25);
+      color: #c7d2fe;
+    }
+
+    .form-input[readonly] {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
     tr:hover td {
       color: white;
     }
@@ -1720,6 +1743,18 @@ static std::string buildDashboardHtml() {
       return `<a href="/teams/${abbr}" class="${cssClass}"${styleAttr} onclick="event.preventDefault(); navigateToTeam('${abbr}')">${abbr}</a>`;
     }
 
+    // Renders a game's Status cell: the status text for a played game, or a
+    // "Record Score" link for an unplayed one that opens the update modal
+    // pre-filled with this game (used by both the Games page and team pages).
+    function renderStatusCell(game) {
+      const played = game.status === "final" || game.status === "in_progress";
+      if (played) {
+        const statusColor = game.status === "final" ? "var(--success-color)" : "var(--warning-color)";
+        return `<span style="color:${statusColor};font-weight:600;text-transform:capitalize">${game.status}</span>`;
+      }
+      return `<a href="#" class="record-score-link" onclick="event.preventDefault(); openUpdateModal(${game.week}, '${game.home_team}', '${game.away_team}')">Record Score</a>`;
+    }
+
     // Client-side API fetch
     function loadData(tabName) {
       if (tabName === "standings") {
@@ -2004,14 +2039,39 @@ static std::string buildDashboardHtml() {
     }
 
     // Modal Control Functions
-    function openUpdateModal() {
+    // Called with no arguments (the Standings tab's "Record Score" button) for
+    // a blank form. Called with a specific game (from a Games/Team schedule
+    // row's "Record Score" link) to pre-fill and lock in week/teams so the
+    // user only has to type the final score.
+    function openUpdateModal(week, homeTeam, awayTeam) {
       document.getElementById("updateModal").style.display = "flex";
-      document.getElementById("weekInput").focus();
+
+      const weekInput = document.getElementById("weekInput");
+      const homeInput = document.getElementById("homeTeamInput");
+      const awayInput = document.getElementById("awayTeamInput");
+
+      const prefilled = week !== undefined && homeTeam && awayTeam;
+      weekInput.readOnly = prefilled;
+      homeInput.readOnly = prefilled;
+      awayInput.readOnly = prefilled;
+
+      if (prefilled) {
+        weekInput.value = week;
+        homeInput.value = homeTeam;
+        awayInput.value = awayTeam;
+        document.getElementById("homeScoreInput").focus();
+      } else {
+        weekInput.focus();
+      }
     }
 
     function closeUpdateModal() {
       document.getElementById("updateModal").style.display = "none";
-      document.getElementById("updateForm").reset();
+      const form = document.getElementById("updateForm");
+      form.reset();
+      document.getElementById("weekInput").readOnly = false;
+      document.getElementById("homeTeamInput").readOnly = false;
+      document.getElementById("awayTeamInput").readOnly = false;
     }
 
     function handleBackdropClick(e) {
@@ -2040,7 +2100,14 @@ static std::string buildDashboardHtml() {
         if (data.ok) {
           closeUpdateModal();
           showToast("Game score successfully persisted!");
-          // Reload current active tab values dynamically!
+          // Invalidate every tab's cached game/team data so whichever tab is
+          // active (and whichever tab the user visits next) re-fetches fresh
+          // state instead of showing what was true before this save.
+          gamesData = [];
+          teamsListData = null;
+          sandboxGames = [];
+          sandboxBaseOdds = null;
+          lastSandboxSimData = null;
           loadData(currentTab);
         } else {
           alert("Error: " + data.error);
@@ -2189,9 +2256,6 @@ static std::string buildDashboardHtml() {
       games.forEach(game => {
         const played = game.status === "final" || game.status === "in_progress";
         const score = played ? `${game.away_score} - ${game.home_score}` : "-";
-        const statusColor = game.status === "final" ? "var(--success-color)"
-          : game.status === "in_progress" ? "var(--warning-color)"
-          : "var(--text-secondary)";
 
         const row = document.createElement("tr");
         row.innerHTML = `
@@ -2199,7 +2263,7 @@ static std::string buildDashboardHtml() {
           <td>${teamLink(game.away_team)}</td>
           <td>${teamLink(game.home_team)}</td>
           <td>${score}</td>
-          <td style="color:${statusColor};font-weight:600;text-transform:capitalize">${game.status}</td>
+          <td>${renderStatusCell(game)}</td>
         `;
         tbody.appendChild(row);
       });
@@ -2330,9 +2394,6 @@ static std::string buildDashboardHtml() {
           const opponent = isHome ? game.away_team : game.home_team;
           const played = game.status === "final" || game.status === "in_progress";
           const score = played ? `${game.away_score} - ${game.home_score}` : "-";
-          const statusColor = game.status === "final" ? "var(--success-color)"
-            : game.status === "in_progress" ? "var(--warning-color)"
-            : "var(--text-secondary)";
 
           const row = document.createElement("tr");
           row.dataset.week = game.week;
@@ -2344,7 +2405,7 @@ static std::string buildDashboardHtml() {
             <td>${game.date}</td>
             <td>${isHome ? 'vs' : '@'} ${teamLink(opponent)}</td>
             <td>${score}</td>
-            <td style="color:${statusColor};font-weight:600;text-transform:capitalize">${game.status}</td>
+            <td>${renderStatusCell(game)}</td>
             <td class="importance-cell" style="color:var(--text-secondary)">${played ? '—' : ''}</td>
           `;
           scheduleTbody.appendChild(row);

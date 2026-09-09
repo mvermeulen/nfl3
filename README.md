@@ -51,6 +51,7 @@ Notes:
 - `GET /api/impact?iterations=<N>`: impact JSON
 - `POST /api/update-result`: apply a game result and persist to `data/schedule.csv`
 	- Body (x-www-form-urlencoded): `week`, `home_team`, `away_team`, `home_score`, `away_score`
+	- Any unplayed game's Status cell on the Games page or a team page is itself a "Record Score" link that opens this form pre-filled and locked to that game, so only the score needs typing.
 - `POST /api/fetch-live`: trigger live score sync from ESPN scoreboard API for all weeks and reload schedule in-place
 
 See [INVESTIGATION.md](INVESTIGATION.md) for project goals and architecture.
