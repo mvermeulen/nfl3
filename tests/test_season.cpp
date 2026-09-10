@@ -157,6 +157,30 @@ TEST_CASE("Season division standings sorting", "[Season]") {
         REQUIRE(standings[1]->abbreviation() == "KC");  // 1-1
         REQUIRE(standings[2]->abbreviation() == "DEN"); // 0-1
     }
+
+    SECTION("A team with an actual loss doesn't rank with untested teams") {
+        // Regression test: winPercentage() is 0.0 both for a team that has
+        // played and lost (0-1) and for a team that hasn't played at all
+        // (0-0). Grouping standings by raw win percentage used to treat
+        // these as "tied", letting the tiebreaker procedure rank a team
+        // with a real loss above (or alongside) untested teams. KC here
+        // loses its only game; DEN and LV haven't played.
+        season.addGame(Game(1, "2026-09-09", "LV", "KC", 13, 10, "final"));
+        season.computeStandings();
+
+        Team* kc = season.getTeam("KC");
+        REQUIRE(kc->losses() == 1);
+        REQUIRE(kc->winPercentage() == 0.0);
+        REQUIRE(season.getTeam("DEN")->gamesPlayed() == 0);
+
+        auto standings = season.teamsByDivision("AFC West");
+
+        REQUIRE(standings[0]->abbreviation() == "LV");  // 1-0
+        // DEN is untested (0-0); it must not be conflated with KC's
+        // genuine 0.000 record and must rank ahead of KC.
+        REQUIRE(standings[1]->abbreviation() == "DEN"); // 0-0, untested
+        REQUIRE(standings[2]->abbreviation() == "KC");  // 0-1, actual loss
+    }
 }
 
 TEST_CASE("Season division/conference record tracking", "[Season]") {

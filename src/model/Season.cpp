@@ -1,7 +1,27 @@
 #include "Season.h"
 #include "Tiebreaker.h"
 #include <algorithm>
+#include <limits>
 #include <set>
+
+namespace {
+
+// Win percentage alone can't distinguish "0 games played" from a genuine
+// 0.000 record (e.g. 0 wins, 1 loss) since both divide out to 0.0. Grouping
+// teams by raw winPercentage() would then treat a team that has actually
+// lost a game as tied with teams that haven't played yet, letting the
+// tiebreaker procedure rank the loser above winless-but-untested teams.
+// Nudge the untested case to a tiny positive value so it still ties with
+// other untested teams, but always sorts above any team with a real 0.000.
+double standingsSortKey(const Team* team) {
+    double winPct = team->winPercentage();
+    if (team->gamesPlayed() == 0 && winPct == 0.0) {
+        return std::numeric_limits<double>::min();
+    }
+    return winPct;
+}
+
+}  // namespace
 
 void Season::addTeam(const Team& team) {
     teams_[team.abbreviation()] = team;
@@ -98,12 +118,13 @@ std::vector<Team*> Season::teamsByDivision(const std::string& division) {
         }
     }
     
-    // Group teams by win percentage
+    // Group teams by win percentage (untested teams keyed separately from a
+    // genuine 0.000 record — see standingsSortKey above)
     std::map<double, std::vector<Team*>> winPctGroups;
     for (auto* team : result) {
-        winPctGroups[team->winPercentage()].push_back(team);
+        winPctGroups[standingsSortKey(team)].push_back(team);
     }
-    
+
     // Sort by win percentage (descending), and apply tiebreaker within groups
     result.clear();
     for (auto it = winPctGroups.rbegin(); it != winPctGroups.rend(); ++it) {
@@ -140,12 +161,13 @@ std::vector<Team*> Season::teamsByConference(const std::string& conference) {
         }
     }
     
-    // Group teams by win percentage
+    // Group teams by win percentage (untested teams keyed separately from a
+    // genuine 0.000 record — see standingsSortKey above)
     std::map<double, std::vector<Team*>> winPctGroups;
     for (auto* team : result) {
-        winPctGroups[team->winPercentage()].push_back(team);
+        winPctGroups[standingsSortKey(team)].push_back(team);
     }
-    
+
     // Sort by win percentage (descending), and apply tiebreaker within groups
     result.clear();
     for (auto it = winPctGroups.rbegin(); it != winPctGroups.rend(); ++it) {
