@@ -42,7 +42,7 @@ private:
     std::string renderSimulationHtml(int iterations) const;
     std::string renderImpactHtml(int iterations) const;
 
-    std::string standingsJson() const;
+    std::string standingsJson(int iterations) const;
     std::string simulationJson(int iterations, const std::string& locksStr = "") const;
     std::string impactJson(int iterations) const;
 

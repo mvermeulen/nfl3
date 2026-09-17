@@ -20,6 +20,7 @@
 #include <string>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <unordered_set>
 #include <vector>
 
 namespace {
@@ -268,7 +269,7 @@ std::string WebServer::handleRequest(const std::string& method,
     }
     if (method == "GET" && path == "/api/standings") {
         contentType = "application/json; charset=utf-8";
-        return standingsJson();
+        return standingsJson(parseIterations(rawPath, 3000));
     }
     if (method == "GET" && path == "/api/games") {
         contentType = "application/json; charset=utf-8";
@@ -605,6 +606,14 @@ static std::string buildDashboardHtml() {
       color: var(--text-secondary);
       font-size: 0.95rem;
       margin-top: 0.25rem;
+    }
+
+    .section-subtitle {
+      font-family: var(--font-display);
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-top: 0.5rem;
     }
 
     /* Controls & Inputs */
@@ -1269,6 +1278,12 @@ static std::string buildDashboardHtml() {
       <div id="standings-container" class="division-grid">
         <!-- Division Cards loaded dynamically -->
       </div>
+
+      <h2 class="section-subtitle">Wild Card Standings</h2>
+      <p class="page-desc" style="margin-bottom:1rem">Non-division-leading teams in playoff position, ranked by conference tiebreakers, with simulated odds of earning a wild card berth.</p>
+      <div id="wildcard-container" class="division-grid">
+        <!-- Wild Card Cards loaded dynamically -->
+      </div>
     </section>
 
     <!-- GAMES SECTION -->
@@ -1779,8 +1794,10 @@ static std::string buildDashboardHtml() {
 
     function fetchStandings() {
       const container = document.getElementById("standings-container");
+      const wildcardContainer = document.getElementById("wildcard-container");
       container.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:4rem;"><div class="spinner" style="margin:0 auto 1rem auto"></div>Loading standings...</div>`;
-      
+      wildcardContainer.innerHTML = "";
+
       fetch("/api/standings")
         .then(res => res.json())
         .then(data => {
@@ -1794,6 +1811,7 @@ static std::string buildDashboardHtml() {
             div.teams.forEach((team, idx) => {
               const isLeader = idx === 0;
               const winPct = (team.win_pct * 100).toFixed(1) + "%";
+              const divisionProb = (team.division_prob * 100).toFixed(1) + "%";
               tableRows += `
                 <tr class="${isLeader ? 'playoff-row-highlight' : ''}">
                   <td>
@@ -1803,6 +1821,7 @@ static std::string buildDashboardHtml() {
                   <td style="text-align:center">${team.losses}</td>
                   <td style="text-align:center">${team.ties}</td>
                   <td style="text-align:right;font-weight:600">${winPct}</td>
+                  <td style="text-align:right;font-weight:600;color:var(--success-color)">${divisionProb}</td>
                 </tr>
               `;
             });
@@ -1820,6 +1839,7 @@ static std::string buildDashboardHtml() {
                     <th style="text-align:center">L</th>
                     <th style="text-align:center">T</th>
                     <th style="text-align:right">Win %</th>
+                    <th style="text-align:right">Division %</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1828,6 +1848,58 @@ static std::string buildDashboardHtml() {
               </table>
             `;
             container.appendChild(card);
+          });
+
+          wildcardContainer.innerHTML = "";
+          ["AFC", "NFC"].forEach(conf => {
+            const teams = (data.wildcard && data.wildcard[conf]) || [];
+            const card = document.createElement("div");
+            card.className = "card";
+
+            let tableRows = "";
+            teams.forEach((team, idx) => {
+              const inWildcardSpot = idx < 3;
+              const winPct = (team.win_pct * 100).toFixed(1) + "%";
+              const wildcardProb = (team.wildcard_prob * 100).toFixed(1) + "%";
+              tableRows += `
+                <tr class="${inWildcardSpot ? 'playoff-row-highlight' : ''}">
+                  <td>
+                    ${teamLink(team.abbr)}
+                  </td>
+                  <td style="font-size:0.8rem;color:var(--text-secondary)">${team.division.replace(conf + ' ', '')}</td>
+                  <td style="text-align:center">${team.wins}</td>
+                  <td style="text-align:center">${team.losses}</td>
+                  <td style="text-align:center">${team.ties}</td>
+                  <td style="text-align:right;font-weight:600">${winPct}</td>
+                  <td style="text-align:right;font-weight:600;color:var(--success-color)">${wildcardProb}</td>
+                </tr>
+                ${idx === 2 ? '<tr><td colspan="7" style="padding:0.1rem 0;border-bottom:1px dashed var(--border-color)"></td></tr>' : ''}
+              `;
+            });
+
+            card.innerHTML = `
+              <h3 class="card-title">
+                <span>${conf} Wild Card</span>
+                <span style="font-size:0.7rem;color:var(--text-secondary);font-weight:600">Top 3 = Playoff Spot</span>
+              </h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Team</th>
+                    <th>Div</th>
+                    <th style="text-align:center">W</th>
+                    <th style="text-align:center">L</th>
+                    <th style="text-align:center">T</th>
+                    <th style="text-align:right">Win %</th>
+                    <th style="text-align:right">Wild Card %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${tableRows}
+                </tbody>
+              </table>
+            `;
+            wildcardContainer.appendChild(card);
           });
         })
         .catch(err => {
@@ -3157,12 +3229,31 @@ std::string WebServer::renderImpactHtml(int iterations) const {
     return buildDashboardHtml();
 }
 
-std::string WebServer::standingsJson() const {
+std::string WebServer::standingsJson(int iterations) const {
     Season current = season_;
     current.computeStandings();
 
+    MonteCarlo mc;
+    mc.setModelParameters(homeAdvantage_, strengthWeight_);
+    mc.loadHistoricalStrengths(current, "data/historical");
+    const auto sim = mc.simulate(current, iterations, 12345);
+
+    auto probFor = [](const std::map<std::string, double>& probs, const std::string& abbr) -> double {
+        const auto it = probs.find(abbr);
+        return it != probs.end() ? it->second : 0.0;
+    };
+
+    // Division winners (used to exclude them from the wildcard picture).
+    std::unordered_set<std::string> divisionWinners;
+    for (const auto& division : current.getDivisions()) {
+        const auto divStandings = current.teamsByDivision(division);
+        if (!divStandings.empty()) {
+            divisionWinners.insert(divStandings[0]->abbreviation());
+        }
+    }
+
     std::ostringstream out;
-    out << "{\"divisions\":[";
+    out << "{\"iterations\":" << iterations << ",\"divisions\":[";
     bool firstDivision = true;
 
     for (const auto& division : current.getDivisions()) {
@@ -3179,18 +3270,55 @@ std::string WebServer::standingsJson() const {
                 out << ',';
             }
             firstTeam = false;
-            out << "{\"abbr\":\"" << jsonEscape(team->abbreviation())
+            const std::string& abbr = team->abbreviation();
+            out << "{\"abbr\":\"" << jsonEscape(abbr)
                 << "\",\"full_name\":\"" << jsonEscape(team->fullName())
                 << "\",\"wins\":" << team->wins()
                 << ",\"losses\":" << team->losses()
                 << ",\"ties\":" << team->ties()
-                << ",\"win_pct\":" << team->winPercentage() << '}';
+                << ",\"win_pct\":" << team->winPercentage()
+                << ",\"division_prob\":" << probFor(sim.divisionWinProbability, abbr)
+                << ",\"wildcard_prob\":" << probFor(sim.wildcardProbability, abbr) << '}';
         }
 
         out << "]}";
     }
 
-    out << "]}";
+    out << "],\"wildcard\":{";
+
+    bool firstConf = true;
+    for (const std::string& conf : {std::string("AFC"), std::string("NFC")}) {
+        if (!firstConf) {
+            out << ',';
+        }
+        firstConf = false;
+
+        out << "\"" << conf << "\":[";
+        const auto confTeams = current.teamsByConference(conf);
+        bool firstTeam = true;
+        for (const auto* team : confTeams) {
+            const std::string& abbr = team->abbreviation();
+            if (divisionWinners.count(abbr)) {
+                continue;
+            }
+            if (!firstTeam) {
+                out << ',';
+            }
+            firstTeam = false;
+            out << "{\"abbr\":\"" << jsonEscape(abbr)
+                << "\",\"full_name\":\"" << jsonEscape(team->fullName())
+                << "\",\"division\":\"" << jsonEscape(team->division())
+                << "\",\"wins\":" << team->wins()
+                << ",\"losses\":" << team->losses()
+                << ",\"ties\":" << team->ties()
+                << ",\"win_pct\":" << team->winPercentage()
+                << ",\"wildcard_prob\":" << probFor(sim.wildcardProbability, abbr)
+                << ",\"playoff_prob\":" << probFor(sim.playoffProbability, abbr) << '}';
+        }
+        out << "]";
+    }
+
+    out << "}}";
     return out.str();
 }
 
