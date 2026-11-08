@@ -38,16 +38,22 @@ Notes:
 ## Web Endpoints
 
 - `GET /` and `GET /standings`: standings dashboard
+  - Division rows are tinted green with a `CLINCHED` badge once a team has mathematically clinched its division, and red with an `ELIMINATED` badge once it can no longer win it (its Division % also turns red alongside the 0.0%). Wild card rows get the same green treatment once a berth is clinched, and teams eliminated from wild card contention drop off the wild card board entirely.
+  - The flags are deliberately conservative: they fire only when win-percentage bounds (or, for a completed season, the final standings) make the outcome certain, ignoring tiebreakers. A team can therefore show 0.0% without the red marker when a technically possible path remains that the simulation never sampled.
 - `GET /games`: schedule/results dashboard with a per-week filter (`?week=<N>` optional)
 - `GET /teams` and `GET /teams/<ABBR>`: team list and per-team page with full schedule
   - The team page's "Calculate Importance" button computes, for each of that team's remaining games, how much winning vs. losing it alone swings the team's playoff probability (two locked Monte Carlo runs per game via `/api/simulation`). It's opt-in behind a button rather than automatic, since it costs a handful of simulation runs per remaining game.
 - `GET /simulation`: simulation dashboard (`?iterations=<N>` optional)
+  - The "Playoff Seeding Odds" view shows the same `CLINCHED`/`ELIMINATED` badges and color coding as the standings page, evaluated against whatever scenario is being simulated (including any sandbox locks).
 - `GET /impact`: impact dashboard (`?iterations=<N>` optional)
 - `GET /sandbox`: simulation dashboard sandbox for what-if scenarios
 - `GET /api/standings`: standings JSON
+  - Each team carries `division_clinched`, `division_eliminated`, `playoff_clinched`, and `wildcard_eliminated`: mathematical clinch/elimination flags derived from schedule bounds rather than from the simulation, so they don't drift with the iteration count.
+  - The `wildcard` lists omit teams that are mathematically eliminated from a wild card berth.
 - `GET /api/games`: raw games list JSON
 - `GET /api/simulation` & `POST /api/simulation`: simulation JSON (`iterations=<N>` and `locks=<LOCKS>` optional)
   - `locks` accepts a comma-separated list of forced outcomes: `week:home_team:away_team:winner` (e.g. `18:BUF:NE:home`) to simulate custom scenarios.
+  - Each team also carries the same `division_clinched`, `division_eliminated`, `playoff_clinched`, and `wildcard_eliminated` flags as `/api/standings`, computed against the schedule after any `locks` are applied.
 - `GET /api/impact?iterations=<N>`: impact JSON
 - `POST /api/update-result`: apply a game result and persist to `data/schedule.csv`
 	- Body (x-www-form-urlencoded): `week`, `home_team`, `away_team`, `home_score`, `away_score`

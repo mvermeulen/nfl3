@@ -1,5 +1,6 @@
 #include "WebServer.h"
 
+#include "model/ClinchStatus.h"
 #include "model/MonteCarlo.h"
 #include "util/CsvParser.h"
 #include "app/CommandSupport.h"
@@ -827,6 +828,62 @@ static std::string buildDashboardHtml() {
       background: rgba(16, 185, 129, 0.04);
     }
 
+    /* Mathematical clinch / elimination indicators. */
+    .status-clinched {
+      background: rgba(16, 185, 129, 0.14);
+      box-shadow: inset 3px 0 0 var(--success-color);
+    }
+
+    .status-eliminated {
+      background: rgba(244, 63, 94, 0.1);
+      box-shadow: inset 3px 0 0 var(--danger-color);
+    }
+
+    .status-eliminated td {
+      color: var(--text-secondary);
+    }
+
+    .status-badge {
+      display: inline-block;
+      margin-left: 0.4rem;
+      padding: 0.05rem 0.35rem;
+      border-radius: 4px;
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      vertical-align: middle;
+      cursor: help;
+    }
+
+    .status-badge.clinched {
+      background: var(--success-bg);
+      color: var(--success-color);
+    }
+
+    .status-badge.eliminated {
+      background: var(--danger-bg);
+      color: var(--danger-color);
+    }
+
+    .status-legend {
+      display: flex;
+      gap: 1.25rem;
+      flex-wrap: wrap;
+      align-items: center;
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+      margin-bottom: 1rem;
+    }
+
+    .status-legend .swatch {
+      display: inline-block;
+      width: 0.7rem;
+      height: 0.7rem;
+      border-radius: 3px;
+      margin-right: 0.35rem;
+      vertical-align: -1px;
+    }
+
     /* Progress bar */
     .progress-container {
       display: flex;
@@ -1275,12 +1332,17 @@ static std::string buildDashboardHtml() {
         </button>
       </div>
 
+      <div class="status-legend">
+        <span><span class="swatch" style="background:var(--success-color)"></span>Clinched (mathematically guaranteed)</span>
+        <span><span class="swatch" style="background:var(--danger-color)"></span>Eliminated (mathematically impossible)</span>
+      </div>
+
       <div id="standings-container" class="division-grid">
         <!-- Division Cards loaded dynamically -->
       </div>
 
       <h2 class="section-subtitle">Wild Card Standings</h2>
-      <p class="page-desc" style="margin-bottom:1rem">Non-division-leading teams in playoff position, ranked by conference tiebreakers, with simulated odds of earning a wild card berth.</p>
+      <p class="page-desc" style="margin-bottom:1rem">Non-division-leading teams still alive for a wild card, ranked by conference tiebreakers, with simulated odds of earning a berth. Teams mathematically eliminated from wild card contention are dropped from this list.</p>
       <div id="wildcard-container" class="division-grid">
         <!-- Wild Card Cards loaded dynamically -->
       </div>
@@ -1792,6 +1854,19 @@ static std::string buildDashboardHtml() {
       }
     }
 
+    // Mathematical clinch/elimination presentation. The flags come straight from
+    // /api/standings and are guaranteed by schedule bounds, so a badge only ever
+    // appears alongside a 100.0% or 0.0% simulated probability.
+    function statusRowClass(clinched, eliminated, fallbackClass) {
+      if (clinched) return "status-clinched";
+      if (eliminated) return "status-eliminated";
+      return fallbackClass || "";
+    }
+
+    function statusBadge(variant, label, title) {
+      return `<span class="status-badge ${variant}" title="${title}">${label}</span>`;
+    }
+
     function fetchStandings() {
       const container = document.getElementById("standings-container");
       const wildcardContainer = document.getElementById("wildcard-container");
@@ -1812,16 +1887,25 @@ static std::string buildDashboardHtml() {
               const isLeader = idx === 0;
               const winPct = (team.win_pct * 100).toFixed(1) + "%";
               const divisionProb = (team.division_prob * 100).toFixed(1) + "%";
+              const rowClass = statusRowClass(team.division_clinched, team.division_eliminated,
+                                              isLeader ? "playoff-row-highlight" : "");
+              let badge = "";
+              if (team.division_clinched) {
+                badge = statusBadge("clinched", "CLINCHED", "Clinched the division");
+              } else if (team.division_eliminated) {
+                badge = statusBadge("eliminated", "ELIMINATED", "Eliminated from winning the division");
+              }
+              const probColor = team.division_eliminated ? "var(--danger-color)" : "var(--success-color)";
               tableRows += `
-                <tr class="${isLeader ? 'playoff-row-highlight' : ''}">
+                <tr class="${rowClass}">
                   <td>
-                    ${teamLink(team.abbr)}
+                    ${teamLink(team.abbr)}${badge}
                   </td>
                   <td style="text-align:center">${team.wins}</td>
                   <td style="text-align:center">${team.losses}</td>
                   <td style="text-align:center">${team.ties}</td>
                   <td style="text-align:right;font-weight:600">${winPct}</td>
-                  <td style="text-align:right;font-weight:600;color:var(--success-color)">${divisionProb}</td>
+                  <td style="text-align:right;font-weight:600;color:${probColor}">${divisionProb}</td>
                 </tr>
               `;
             });
@@ -1861,10 +1945,20 @@ static std::string buildDashboardHtml() {
               const inWildcardSpot = idx < 3;
               const winPct = (team.win_pct * 100).toFixed(1) + "%";
               const wildcardProb = (team.wildcard_prob * 100).toFixed(1) + "%";
+              // Teams eliminated from wild card contention never reach this
+              // list, so only the clinch side of the indicator can fire here.
+              const rowClass = statusRowClass(team.playoff_clinched, false,
+                                              inWildcardSpot ? "playoff-row-highlight" : "");
+              const badge = team.playoff_clinched
+                ? statusBadge("clinched", "CLINCHED", "Clinched a playoff berth")
+                : "";
+              // The dashed cut line marks the last wild card spot; drop it when
+              // there is nothing left below it to separate.
+              const showCutLine = idx === 2 && teams.length > 3;
               tableRows += `
-                <tr class="${inWildcardSpot ? 'playoff-row-highlight' : ''}">
+                <tr class="${rowClass}">
                   <td>
-                    ${teamLink(team.abbr)}
+                    ${teamLink(team.abbr)}${badge}
                   </td>
                   <td style="font-size:0.8rem;color:var(--text-secondary)">${team.division.replace(conf + ' ', '')}</td>
                   <td style="text-align:center">${team.wins}</td>
@@ -1873,9 +1967,13 @@ static std::string buildDashboardHtml() {
                   <td style="text-align:right;font-weight:600">${winPct}</td>
                   <td style="text-align:right;font-weight:600;color:var(--success-color)">${wildcardProb}</td>
                 </tr>
-                ${idx === 2 ? '<tr><td colspan="7" style="padding:0.1rem 0;border-bottom:1px dashed var(--border-color)"></td></tr>' : ''}
+                ${showCutLine ? '<tr><td colspan="7" style="padding:0.1rem 0;border-bottom:1px dashed var(--border-color)"></td></tr>' : ''}
               `;
             });
+
+            if (teams.length === 0) {
+              tableRows = `<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:1.5rem">Every non-division-leading ${conf} team has been eliminated from wild card contention.</td></tr>`;
+            }
 
             card.innerHTML = `
               <h3 class="card-title">
@@ -1948,10 +2046,28 @@ static std::string buildDashboardHtml() {
           if (team.playoff >= 0.7) progressClass = "prog-emerald";
           else if (team.playoff <= 0.3) progressClass = "prog-rose";
 
+          // Same mathematical clinch/elimination flags as the standings page
+          // (see statusRowClass/statusBadge there), evaluated against whatever
+          // scenario is being simulated (locks included).
+          const rowClass = statusRowClass(team.playoff_clinched, team.wildcard_eliminated && team.division_eliminated, "");
+          const nameBadge = team.playoff_clinched
+            ? statusBadge("clinched", "CLINCHED", "Clinched a playoff berth")
+            : (team.wildcard_eliminated && team.division_eliminated
+                ? statusBadge("eliminated", "ELIMINATED", "Eliminated from playoff contention")
+                : "");
+          const divisionColor = team.division_eliminated ? "var(--danger-color)" : "inherit";
+          const divisionBadge = team.division_clinched
+            ? statusBadge("clinched", "CLINCHED", "Clinched the division")
+            : (team.division_eliminated
+                ? statusBadge("eliminated", "ELIMINATED", "Eliminated from winning the division")
+                : "");
+          const wildcardColor = team.wildcard_eliminated ? "var(--danger-color)" : "inherit";
+
           const row = document.createElement("tr");
+          row.className = rowClass;
           row.innerHTML = `
             <td>
-              ${teamLink(team.abbr, "team-abbr-badge", "font-size:0.9rem")}
+              ${teamLink(team.abbr, "team-abbr-badge", "font-size:0.9rem")}${nameBadge}
             </td>
             <td>
               <div class="progress-container">
@@ -1961,8 +2077,8 @@ static std::string buildDashboardHtml() {
                 <span style="font-weight:700;min-width:45px">${playoffPctStr}</span>
               </div>
             </td>
-            <td>${divisionPctStr}</td>
-            <td>${wildcardPctStr}</td>
+            <td style="color:${divisionColor}">${divisionPctStr}${divisionBadge}</td>
+            <td style="color:${wildcardColor}">${wildcardPctStr}</td>
           `;
           tbody.appendChild(row);
         });
@@ -3243,6 +3359,15 @@ std::string WebServer::standingsJson(int iterations) const {
         return it != probs.end() ? it->second : 0.0;
     };
 
+    // Mathematical clinch/elimination flags. These come from schedule bounds
+    // rather than the simulation, so they stay stable across iteration counts.
+    const auto clinchStatuses = ClinchStatus::compute(current);
+    auto statusFor = [&clinchStatuses](const std::string& abbr) -> TeamClinchStatus {
+        const auto it = clinchStatuses.find(abbr);
+        return it != clinchStatuses.end() ? it->second : TeamClinchStatus{};
+    };
+    auto jsonBool = [](bool value) { return value ? "true" : "false"; };
+
     // Division winners (used to exclude them from the wildcard picture).
     std::unordered_set<std::string> divisionWinners;
     for (const auto& division : current.getDivisions()) {
@@ -3271,6 +3396,7 @@ std::string WebServer::standingsJson(int iterations) const {
             }
             firstTeam = false;
             const std::string& abbr = team->abbreviation();
+            const TeamClinchStatus status = statusFor(abbr);
             out << "{\"abbr\":\"" << jsonEscape(abbr)
                 << "\",\"full_name\":\"" << jsonEscape(team->fullName())
                 << "\",\"wins\":" << team->wins()
@@ -3278,7 +3404,11 @@ std::string WebServer::standingsJson(int iterations) const {
                 << ",\"ties\":" << team->ties()
                 << ",\"win_pct\":" << team->winPercentage()
                 << ",\"division_prob\":" << probFor(sim.divisionWinProbability, abbr)
-                << ",\"wildcard_prob\":" << probFor(sim.wildcardProbability, abbr) << '}';
+                << ",\"wildcard_prob\":" << probFor(sim.wildcardProbability, abbr)
+                << ",\"division_clinched\":" << jsonBool(status.divisionClinched)
+                << ",\"division_eliminated\":" << jsonBool(status.divisionEliminated)
+                << ",\"playoff_clinched\":" << jsonBool(status.playoffClinched)
+                << ",\"wildcard_eliminated\":" << jsonBool(status.wildcardEliminated) << '}';
         }
 
         out << "]}";
@@ -3301,6 +3431,12 @@ std::string WebServer::standingsJson(int iterations) const {
             if (divisionWinners.count(abbr)) {
                 continue;
             }
+            const TeamClinchStatus status = statusFor(abbr);
+            // Teams that can no longer reach a wild card spot drop off the
+            // board entirely rather than lingering at 0.0%.
+            if (status.wildcardEliminated) {
+                continue;
+            }
             if (!firstTeam) {
                 out << ',';
             }
@@ -3313,7 +3449,9 @@ std::string WebServer::standingsJson(int iterations) const {
                 << ",\"ties\":" << team->ties()
                 << ",\"win_pct\":" << team->winPercentage()
                 << ",\"wildcard_prob\":" << probFor(sim.wildcardProbability, abbr)
-                << ",\"playoff_prob\":" << probFor(sim.playoffProbability, abbr) << '}';
+                << ",\"playoff_prob\":" << probFor(sim.playoffProbability, abbr)
+                << ",\"division_clinched\":" << jsonBool(status.divisionClinched)
+                << ",\"playoff_clinched\":" << jsonBool(status.playoffClinched) << '}';
         }
         out << "]";
     }
@@ -3358,6 +3496,16 @@ std::string WebServer::simulationJson(int iterations, const std::string& locksSt
     current.computeStandings();
     const auto sim = mc.simulate(current, iterations, 12345);
 
+    // Clinch/elimination flags for whatever scenario is being simulated
+    // (locks included), so a sandbox lock that settles a race is reflected
+    // here the same way it would be once that result actually happens.
+    const auto clinchStatuses = ClinchStatus::compute(current);
+    auto statusFor = [&clinchStatuses](const std::string& abbr) -> TeamClinchStatus {
+        const auto it = clinchStatuses.find(abbr);
+        return it != clinchStatuses.end() ? it->second : TeamClinchStatus{};
+    };
+    auto jsonBool = [](bool value) { return value ? "true" : "false"; };
+
     std::ostringstream out;
     out << "{\"iterations\":" << iterations << ",\"teams\":[";
     bool first = true;
@@ -3366,6 +3514,7 @@ std::string WebServer::simulationJson(int iterations, const std::string& locksSt
             out << ',';
         }
         first = false;
+        const TeamClinchStatus status = statusFor(abbr);
         out << "{\"abbr\":\"" << jsonEscape(abbr)
             << "\",\"playoff\":" << prob
             << ",\"division\":" << sim.divisionWinProbability.at(abbr)
@@ -3373,7 +3522,11 @@ std::string WebServer::simulationJson(int iterations, const std::string& locksSt
             << ",\"divisional\":" << sim.makeDivisionalProbability.at(abbr)
             << ",\"conf_championship\":" << sim.makeConfChampionshipProbability.at(abbr)
             << ",\"superbowl\":" << sim.makeSuperBowlProbability.at(abbr)
-            << ",\"win_superbowl\":" << sim.winSuperBowlProbability.at(abbr) << '}';
+            << ",\"win_superbowl\":" << sim.winSuperBowlProbability.at(abbr)
+            << ",\"division_clinched\":" << jsonBool(status.divisionClinched)
+            << ",\"division_eliminated\":" << jsonBool(status.divisionEliminated)
+            << ",\"playoff_clinched\":" << jsonBool(status.playoffClinched)
+            << ",\"wildcard_eliminated\":" << jsonBool(status.wildcardEliminated) << '}';
     }
     out << "]}";
     return out.str();

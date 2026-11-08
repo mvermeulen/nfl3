@@ -145,6 +145,10 @@ TEST_CASE("WebServer API endpoints return expected payloads", "[web]") {
         REQUIRE(response.body.find("\"conf_championship\"") != std::string::npos);
         REQUIRE(response.body.find("\"superbowl\"") != std::string::npos);
         REQUIRE(response.body.find("\"win_superbowl\"") != std::string::npos);
+        REQUIRE(response.body.find("\"division_clinched\"") != std::string::npos);
+        REQUIRE(response.body.find("\"division_eliminated\"") != std::string::npos);
+        REQUIRE(response.body.find("\"playoff_clinched\"") != std::string::npos);
+        REQUIRE(response.body.find("\"wildcard_eliminated\"") != std::string::npos);
     }
 
     SECTION("POST /api/update-result persists updated score") {

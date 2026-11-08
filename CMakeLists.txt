@@ -24,6 +24,7 @@ add_executable(nfl3
     src/model/Season.cpp
     src/model/Tiebreaker.cpp
     src/model/MonteCarlo.cpp
+    src/model/ClinchStatus.cpp
     src/output/AsciiPrinter.cpp
     src/output/WebServer.cpp
 )
@@ -46,6 +47,7 @@ add_executable(nfl3_tests
     tests/test_season.cpp
     tests/test_historical_replay.cpp
     tests/test_montecarlo.cpp
+    tests/test_clinch_status.cpp
     src/util/CsvParser.cpp
     src/util/BacktestFixtureLoader.cpp
     src/app/CommandSupport.cpp
@@ -54,6 +56,7 @@ add_executable(nfl3_tests
     src/model/Season.cpp
     src/model/Tiebreaker.cpp
     src/model/MonteCarlo.cpp
+    src/model/ClinchStatus.cpp
     src/output/AsciiPrinter.cpp
     src/output/WebServer.cpp
 )
